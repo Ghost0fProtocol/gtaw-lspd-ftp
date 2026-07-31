@@ -2,15 +2,7 @@
 
 import { useState } from "react";
 
-type Trainee = {
-  id: number;
-  name: string;
-  reference: string;
-  status: string;
-  progress: number;
-  reports: number;
-  lastActivity: string;
-};
+import { Trainee } from "../lib/types";
 
 type BBCodeRecordProps = {
   trainee: Trainee;

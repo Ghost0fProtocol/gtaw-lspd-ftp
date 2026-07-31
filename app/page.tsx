@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getTrainees } from "../lib/trainees";
 import Login from "../components/Login";
 import Sidebar from "../components/Sidebar";
 import Dashboard from "../components/Dashboard";
@@ -19,44 +20,59 @@ const menuItems = [
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [activePage, setActivePage] = useState("Dashboard");
+  const [trainees, setTrainees] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadTrainees() {
+      const data = await getTrainees();
+
+      console.log(
+        "Supabase trainees:",
+        data
+      );
+
+      setTrainees(data);
+    }
+
+    loadTrainees();
+  }, []);
 
   function pageContent() {
-    switch (activePage) {
-      case "Dashboard":
-        return <Dashboard />;
-
-      case "Records":
-        return <Records />;
-
-      case "Daily Observation Reports":
-        return <DORForm />;
-
-      default:
-        return (
-          <div
-            style={{
-              padding: "32px",
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "12px",
-            }}
-          >
-            <h2 style={{ margin: "0 0 10px" }}>
-              {activePage}
-            </h2>
-
-            <p
-              style={{
-                margin: 0,
-                color: "#94a3b8",
-              }}
-            >
-              This is the prototype{" "}
-              {activePage.toLowerCase()} page.
-            </p>
-          </div>
-        );
+    if (activePage === "Dashboard") {
+      return (
+        <Dashboard
+          trainees={trainees}
+        />
+      );
     }
+
+    if (activePage === "Records") {
+      return <Records />;
+    }
+
+    if (
+      activePage === "Daily Observation Reports"
+    ) {
+      return <DORForm />;
+    }
+
+    return (
+      <div
+        style={{
+          padding: "32px",
+          backgroundColor: "#1e293b",
+          border: "1px solid #334155",
+          borderRadius: "12px",
+        }}
+      >
+        <h2>{activePage}</h2>
+
+        <p style={{ color: "#94a3b8" }}>
+          This is the prototype{" "}
+          {activePage.toLowerCase()} page.
+        </p>
+      </div>
+    );
   }
 
   if (!loggedIn) {
@@ -103,7 +119,6 @@ export default function Home() {
               style={{
                 margin: "0 0 6px",
                 color: "#94a3b8",
-                fontSize: "14px",
               }}
             >
               Welcome back
@@ -128,7 +143,8 @@ export default function Home() {
               padding: "10px 16px",
               backgroundColor: "#1e293b",
               color: "white",
-              border: "1px solid #475569",
+              border:
+                "1px solid #475569",
               borderRadius: "8px",
               cursor: "pointer",
             }}

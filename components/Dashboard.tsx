@@ -1,25 +1,45 @@
-export default function Dashboard() {
+type DashboardProps = {
+  trainees: any[];
+};
+
+export default function Dashboard({
+  trainees,
+}: DashboardProps) {
+  const openItems = trainees.length;
+
+  const inProgress = trainees.filter(
+    (trainee) =>
+      trainee.status === "Active",
+  ).length;
+
+  const pendingReview = trainees.filter(
+    (trainee) =>
+      trainee.status === "Review",
+  ).length;
+
   return (
     <>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gridTemplateColumns:
+            "repeat(3, minmax(0, 1fr))",
           gap: "20px",
           marginBottom: "28px",
         }}
       >
         {[
-          ["Open Items", "6"],
-          ["In Progress", "2"],
-          ["Pending Review", "3"],
+          ["Open Items", openItems],
+          ["In Progress", inProgress],
+          ["Pending Review", pendingReview],
         ].map(([label, value]) => (
           <div
             key={label}
             style={{
               padding: "24px",
               backgroundColor: "#1e293b",
-              border: "1px solid #334155",
+              border:
+                "1px solid #334155",
               borderRadius: "12px",
             }}
           >
@@ -50,19 +70,38 @@ export default function Dashboard() {
         style={{
           padding: "24px",
           backgroundColor: "#1e293b",
-          border: "1px solid #334155",
+          border:
+            "1px solid #334155",
           borderRadius: "12px",
         }}
       >
-        <h2 style={{ margin: "0 0 18px", fontSize: "20px" }}>
+        <h2
+          style={{
+            margin: "0 0 18px",
+            fontSize: "20px",
+          }}
+        >
           Recent Activity
         </h2>
 
-        <div style={{ display: "grid", gap: "12px" }}>
-          {["Item updated", "Report submitted", "Review completed"].map(
-            (activity) => (
+        {trainees.length === 0 ? (
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            No trainee activity yet.
+          </p>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+            }}
+          >
+            {trainees.map((trainee) => (
               <div
-                key={activity}
+                key={trainee.id}
                 style={{
                   padding: "14px",
                   backgroundColor: "#0f172a",
@@ -71,11 +110,27 @@ export default function Dashboard() {
                   fontSize: "14px",
                 }}
               >
-                {activity}
+                <strong>
+                  {trainee.profile?.name ??
+                    "Unknown"}
+                </strong>
+
+                <br />
+
+                Status:
+                {" "}
+                {trainee.status}
+
+                <br />
+
+                FTM:
+                {" "}
+                {trainee.ftm?.name ??
+                  "Unassigned"}
               </div>
-            ),
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
