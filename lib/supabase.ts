@@ -9,11 +9,11 @@ const supabaseKey =
 
 
 console.log("Supabase URL:", supabaseUrl);
-console.log("Supabase Key exists:", !!supabaseKey);
+console.log("Anon key exists:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+console.log("Publishable key exists:", !!process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 
 
-export const supabase =
-  createClient(
-    supabaseUrl!,
-    supabaseKey!
-  );
+export const supabase = createClient(
+  supabaseUrl!,
+  supabaseKey!
+);
