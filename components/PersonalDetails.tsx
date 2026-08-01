@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  FormEvent,
   useEffect,
   useState,
 } from "react";
@@ -16,12 +17,14 @@ const ranks = [
   "Police Officer I",
   "Police Officer II",
   "Police Officer III",
+  "Detective I",
+  "Detective II",
+  "Detective III",
   "Sergeant I",
   "Sergeant II",
   "Lieutenant I",
   "Lieutenant II",
-  "Captain I",
-  "Captain II",
+  "Captain",
   "Commander",
   "Deputy Chief",
   "Assistant Chief",
@@ -102,6 +105,9 @@ export default function PersonalDetails({
       user.requested_role
     );
 
+  const canSelectRank =
+    canSelectDivision;
+
   useEffect(() => {
     async function loadProfile() {
       setError("");
@@ -145,6 +151,7 @@ export default function PersonalDetails({
       );
 
       setRank(
+        canSelectRank &&
         ranks.includes(
           data.rank
         )
@@ -166,7 +173,10 @@ export default function PersonalDetails({
     void loadProfile();
   }, [user]);
 
-  async function saveDetails() {
+  async function saveDetails(
+    event?: FormEvent
+  ) {
+    event?.preventDefault();
     setError("");
     setSuccess("");
 
@@ -186,8 +196,15 @@ export default function PersonalDetails({
       return;
     }
 
+    const rankToSave =
+      canSelectRank
+        ? rank
+        : "Police Officer I";
+
     if (
-      !ranks.includes(rank)
+      !ranks.includes(
+        rankToSave
+      )
     ) {
       setError(
         "Please select a valid police rank."
@@ -224,7 +241,8 @@ export default function PersonalDetails({
           badge.trim(),
         work_number:
           workNumber.trim(),
-        rank,
+        rank:
+          rankToSave,
         division:
           divisionToSave,
         profile_complete:
@@ -275,7 +293,11 @@ export default function PersonalDetails({
 
   return (
     <main style={pageStyle}>
-      <div style={cardStyle}>
+      <form
+        onSubmit={saveDetails}
+        style={formStyle}
+      >
+        <div style={cardStyle}>
         <h1>
           Personal Details
         </h1>
@@ -321,44 +343,64 @@ export default function PersonalDetails({
           style={inputStyle}
         />
 
-        <label style={labelStyle}>
-          Police Rank
-        </label>
+        {canSelectRank ? (
+          <>
+            <label style={labelStyle}>
+              Police Rank
+            </label>
 
-        <select
-          value={rank}
-          onChange={(event) =>
-            setRank(
-              event.target.value
-            )
-          }
-          disabled={saving}
-          style={inputStyle}
-        >
-          {ranks.map(
-            (rankOption) => (
-              <option
-                key={
-                  rankOption
-                }
-                value={
-                  rankOption
-                }
-              >
-                {
-                  rankOption
-                }
-              </option>
-            )
-          )}
-        </select>
+            <select
+              value={rank}
+              onChange={(event) =>
+                setRank(
+                  event.target.value
+                )
+              }
+              disabled={saving}
+              style={inputStyle}
+            >
+              {ranks.map(
+                (rankOption) => (
+                  <option
+                    key={
+                      rankOption
+                    }
+                    value={
+                      rankOption
+                    }
+                  >
+                    {
+                      rankOption
+                    }
+                  </option>
+                )
+              )}
+            </select>
 
-        <p style={rankHelpStyle}>
-          Your FTP portal role is
-          selected separately. This
-          field is only for your
-          in-character police rank.
-        </p>
+            <p style={rankHelpStyle}>
+              Your FTP portal role is
+              selected separately. This
+              field is only for your
+              in-character police rank.
+            </p>
+          </>
+        ) : (
+          <div style={fixedDivisionStyle}>
+            <p style={fixedDivisionLabelStyle}>
+              Police Rank
+            </p>
+
+            <p style={fixedDivisionValueStyle}>
+              Police Officer I
+            </p>
+
+            <p style={fixedDivisionHelpStyle}>
+              Probationary Officers
+              cannot change their rank
+              or FTP role.
+            </p>
+          </div>
+        )}
 
         {canSelectDivision ? (
           <>
@@ -419,10 +461,7 @@ export default function PersonalDetails({
         )}
 
         <button
-          type="button"
-          onClick={
-            saveDetails
-          }
+          type="submit"
           disabled={saving}
           style={{
             ...buttonStyle,
@@ -440,7 +479,8 @@ export default function PersonalDetails({
             ? "Saving..."
             : "Save Details"}
         </button>
-      </div>
+        </div>
+      </form>
 
       {success && (
         <div style={toastStyle}>
@@ -450,6 +490,11 @@ export default function PersonalDetails({
     </main>
   );
 }
+
+const formStyle = {
+  width: "100%",
+  maxWidth: "420px",
+};
 
 const pageStyle = {
   minHeight: "100vh",

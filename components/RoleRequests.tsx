@@ -252,15 +252,6 @@ export default function RoleRequests({
         request.original_bbcode
       );
 
-    if (
-      !parsed.officerName ||
-      !parsed.serialNumber
-    ) {
-      throw new Error(
-        "The submitted FTO file could not be approved because the officer name or serial number could not be parsed."
-      );
-    }
-
     const {
       data: ftoFile,
       error: ftoFileError,
@@ -847,6 +838,7 @@ export default function RoleRequests({
                     label="Parsed Officer"
                     value={
                       parsedPreview.officerName ||
+                      selectedRequest.profile?.name ||
                       "Not found"
                     }
                   />
@@ -855,6 +847,7 @@ export default function RoleRequests({
                     label="Parsed Serial"
                     value={
                       parsedPreview.serialNumber ||
+                      selectedRequest.profile?.badge_number ||
                       "Not found"
                     }
                   />

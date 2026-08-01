@@ -3,6 +3,7 @@
 import {
   FormEvent,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -202,6 +203,52 @@ export default function DORForm({
     useState(false);
 
   const [
+    draftId,
+    setDraftId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    saveStatus,
+    setSaveStatus,
+  ] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  const [
+    lastSavedAt,
+    setLastSavedAt,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    loadingDraft,
+    setLoadingDraft,
+  ] = useState(false);
+
+  const [
+    draftStartedBy,
+    setDraftStartedBy,
+  ] = useState<string | null>(
+    null
+  );
+
+  const autosaveTimeout =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  const draftIdRef =
+    useRef<string | null>(
+      null
+    );
+
+  const savingDraftRef =
+    useRef(false);
+
+  const [
     incompleteNotebookItems,
     setIncompleteNotebookItems,
   ] = useState<NotebookItem[]>([]);
@@ -343,6 +390,51 @@ export default function DORForm({
 
     void selectTrainee(traineeId);
   }, [traineeId, trainees]);
+
+  useEffect(() => {
+    if (
+      !selectedTrainee ||
+      !ftoId ||
+      !formData.patrolNumber ||
+      loadingDraft ||
+      saving
+    ) {
+      return;
+    }
+
+    if (
+      autosaveTimeout.current
+    ) {
+      clearTimeout(
+        autosaveTimeout.current
+      );
+    }
+
+    autosaveTimeout.current =
+      setTimeout(() => {
+        void saveDraft(
+          true
+        );
+      }, 1500);
+
+    return () => {
+      if (
+        autosaveTimeout.current
+      ) {
+        clearTimeout(
+          autosaveTimeout.current
+        );
+      }
+    };
+  }, [
+    selectedTrainee,
+    ftoId,
+    formData,
+    evaluationRatings,
+    selectedNotebookItemIds,
+    loadingDraft,
+    saving,
+  ]);
 
   function updateField(
     field: keyof DORFormData,
@@ -497,6 +589,147 @@ export default function DORForm({
     );
   }
 
+  async function loadExistingDraft(
+    traineeRecordId: string
+  ) {
+    setLoadingDraft(true);
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("dors")
+        .select("*")
+        .eq(
+          "trainee_id",
+          traineeRecordId
+        )
+        .eq(
+          "status",
+          "draft"
+        )
+        .order(
+          "last_saved_at",
+          {
+            ascending: false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        draftIdRef.current =
+          null;
+
+        setDraftId(null);
+        setLastSavedAt(null);
+        setDraftStartedBy(null);
+
+        return false;
+      }
+
+      draftIdRef.current =
+        data.id;
+
+      setDraftId(
+        data.id
+      );
+
+      setLastSavedAt(
+        data.last_saved_at ??
+          data.created_at ??
+          null
+      );
+
+      setDraftStartedBy(
+        data.started_by ??
+          data.fto_id ??
+          null
+      );
+
+      setFormData(
+        (current) => ({
+          ...current,
+          patrolNumber:
+            data.patrol_number
+              ? String(
+                  data.patrol_number
+                )
+              : current.patrolNumber,
+          date:
+            data.patrol_date ??
+            "",
+          startTime:
+            data.start_time ??
+            "",
+          endTime:
+            data.end_time ??
+            "",
+          duration:
+            data.duration ??
+            "",
+          incidentsTasks:
+            data.incidents ??
+            "",
+          belowStandard:
+            data.below_standard ??
+            "",
+          aboveStandard:
+            data.above_standard ??
+            "",
+          learningGoals:
+            data.learning_goals ??
+            "",
+          roleplayRemarks:
+            data.roleplay_remarks ??
+            "",
+        })
+      );
+
+      setEvaluationRatings({
+        ...createInitialRatings(),
+        ...(
+          data.ratings ??
+          {}
+        ),
+      });
+
+      setSelectedNotebookItemIds(
+        Array.isArray(
+          data.completed_notebook_items
+        )
+          ? data.completed_notebook_items
+          : []
+      );
+
+      setSaveStatus(
+        "saved"
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        "LOAD DOR DRAFT ERROR",
+        error
+      );
+
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "The existing DOR draft could not be loaded."
+      );
+
+      return false;
+    } finally {
+      setLoadingDraft(false);
+    }
+  }
+
   async function getNextPatrolNumber(
     traineeRecordId: string
   ) {
@@ -601,6 +834,15 @@ export default function DORForm({
       id
     );
 
+    const loadedDraft =
+      await loadExistingDraft(
+        id
+      );
+
+    if (loadedDraft) {
+      return;
+    }
+
     try {
       const nextPatrolNumber =
         await getNextPatrolNumber(id);
@@ -672,6 +914,221 @@ export default function DORForm({
 
     setFormError("");
     setSuccessMessage("");
+  }
+
+  async function saveDraft(
+    automatic = false
+  ) {
+    if (
+      savingDraftRef.current
+    ) {
+      return;
+    }
+
+    if (
+      !selectedTrainee ||
+      !ftoId ||
+      !formData.patrolNumber
+    ) {
+      if (!automatic) {
+        setFormError(
+          "Select a trainee before saving a draft."
+        );
+      }
+
+      return;
+    }
+
+    savingDraftRef.current =
+      true;
+
+    setSaveStatus(
+      "saving"
+    );
+
+    if (!automatic) {
+      setFormError("");
+      setSuccessMessage("");
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const draftPayload = {
+      trainee_id:
+        selectedTrainee,
+      fto_id:
+        ftoId,
+      patrol_number:
+        Number(
+          formData.patrolNumber
+        ),
+      patrol_date:
+        formData.date ||
+        null,
+      start_time:
+        formData.startTime ||
+        null,
+      end_time:
+        formData.endTime ||
+        null,
+      duration:
+        formData.duration ||
+        null,
+      incidents:
+        formData.incidentsTasks.trim() ||
+        null,
+      below_standard:
+        formData.belowStandard.trim() ||
+        null,
+      above_standard:
+        formData.aboveStandard.trim() ||
+        null,
+      learning_goals:
+        formData.learningGoals.trim() ||
+        null,
+      roleplay_remarks:
+        formData.roleplayRemarks.trim() ||
+        null,
+      ratings:
+        evaluationRatings,
+      completed_notebook_items:
+        selectedNotebookItemIds,
+      status:
+        "draft",
+      started_by:
+        draftStartedBy ??
+        ftoId,
+      last_saved_at:
+        now,
+      submitted_at:
+        null,
+      completed_by:
+        null,
+    };
+
+    try {
+      const currentDraftId =
+        draftIdRef.current ??
+        draftId;
+
+      if (currentDraftId) {
+        const {
+          error,
+        } = await supabase
+          .from("dors")
+          .update(
+            draftPayload
+          )
+          .eq(
+            "id",
+            currentDraftId
+          );
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("dors")
+          .insert(
+            draftPayload
+          )
+          .select(
+            "id, started_by, last_saved_at"
+          )
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        draftIdRef.current =
+          data.id;
+
+        setDraftId(
+          data.id
+        );
+
+        setDraftStartedBy(
+          data.started_by ??
+          ftoId
+        );
+      }
+
+      setLastSavedAt(
+        now
+      );
+
+      setSaveStatus(
+        "saved"
+      );
+
+      if (!automatic) {
+        setSuccessMessage(
+          `Patrol ${formData.patrolNumber} saved as a draft.`
+        );
+      }
+    } catch (error) {
+      const errorDetails =
+        error &&
+        typeof error === "object"
+          ? JSON.stringify(
+              error,
+              null,
+              2
+            )
+          : String(error);
+
+      console.error(
+        "SAVE DOR DRAFT ERROR",
+        errorDetails
+      );
+
+      console.error(
+        error
+      );
+
+      setSaveStatus(
+        "error"
+      );
+
+      const readableMessage =
+        error instanceof Error
+          ? error.message
+          : (
+              error &&
+              typeof error ===
+                "object" &&
+              "message" in error
+            )
+            ? String(
+                (
+                  error as {
+                    message?: unknown;
+                  }
+                ).message ??
+                errorDetails
+              )
+            : errorDetails ||
+              "The DOR draft could not be saved.";
+
+      if (!automatic) {
+        setFormError(
+          readableMessage
+        );
+
+        window.alert(
+          `DOR draft save failed:\n\n${errorDetails}`
+        );
+      }
+    } finally {
+      savingDraftRef.current =
+        false;
+    }
   }
 
   function validateForm() {
@@ -811,50 +1268,86 @@ export default function DORForm({
       );
 
     try {
-      const {
-        error,
-      } = await supabase
-        .from("dors")
-        .insert({
-          trainee_id:
-            selectedTrainee,
-          fto_id:
-            ftoId,
-          patrol_number:
-            Number(
-              formData.patrolNumber
-            ),
-          patrol_date:
-            formData.date,
-          start_time:
-            formData.startTime,
-          end_time:
-            formData.endTime,
-          duration:
-            formData.duration,
-          incidents:
-            formData.incidentsTasks.trim(),
-          below_standard:
-            formData.belowStandard.trim() ||
-            null,
-          above_standard:
-            formData.aboveStandard.trim() ||
-            null,
-          learning_goals:
-            formData.learningGoals.trim() ||
-            null,
-          roleplay_remarks:
-            formData.roleplayRemarks.trim() ||
-            null,
-          ratings:
-            evaluationRatings,
-          completed_notebook_items:
-            selectedNotebookItemIds,
-          bbcode,
-        });
+      const submittedAt =
+        new Date().toISOString();
 
-      if (error) {
-        throw error;
+      const submittedPayload = {
+        trainee_id:
+          selectedTrainee,
+        fto_id:
+          ftoId,
+        patrol_number:
+          Number(
+            formData.patrolNumber
+          ),
+        patrol_date:
+          formData.date,
+        start_time:
+          formData.startTime,
+        end_time:
+          formData.endTime,
+        duration:
+          formData.duration,
+        incidents:
+          formData.incidentsTasks.trim(),
+        below_standard:
+          formData.belowStandard.trim() ||
+          null,
+        above_standard:
+          formData.aboveStandard.trim() ||
+          null,
+        learning_goals:
+          formData.learningGoals.trim() ||
+          null,
+        roleplay_remarks:
+          formData.roleplayRemarks.trim() ||
+          null,
+        ratings:
+          evaluationRatings,
+        completed_notebook_items:
+          selectedNotebookItemIds,
+        bbcode,
+        status:
+          "submitted",
+        started_by:
+          draftStartedBy ??
+          ftoId,
+        completed_by:
+          ftoId,
+        last_saved_at:
+          submittedAt,
+        submitted_at:
+          submittedAt,
+      };
+
+      if (draftId) {
+        const {
+          error,
+        } = await supabase
+          .from("dors")
+          .update(
+            submittedPayload
+          )
+          .eq(
+            "id",
+            draftId
+          );
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        const {
+          error,
+        } = await supabase
+          .from("dors")
+          .insert(
+            submittedPayload
+          );
+
+        if (error) {
+          throw error;
+        }
       }
 
       const savedPatrolNumber =
@@ -902,6 +1395,12 @@ export default function DORForm({
       );
 
       setSelectedTrainee("");
+      draftIdRef.current =
+        null;
+      setDraftId(null);
+      setLastSavedAt(null);
+      setDraftStartedBy(null);
+      setSaveStatus("idle");
 
       setFormData(
         (current) => ({
@@ -977,6 +1476,12 @@ export default function DORForm({
 
   function clearForm() {
     setSelectedTrainee("");
+    draftIdRef.current =
+      null;
+    setDraftId(null);
+    setLastSavedAt(null);
+    setDraftStartedBy(null);
+    setSaveStatus("idle");
 
     setFormData(
       (current) => ({
@@ -1059,6 +1564,33 @@ export default function DORForm({
           forum BBCode.
         </p>
       </div>
+
+      {(draftId || saveStatus !== "idle") && (
+        <div style={draftStatusCardStyle}>
+          <div>
+            <strong>
+              {draftId
+                ? `Patrol ${formData.patrolNumber} Draft`
+                : "New DOR Draft"}
+            </strong>
+
+            <p style={draftStatusTextStyle}>
+              {getDraftStatusText(
+                saveStatus,
+                lastSavedAt
+              )}
+            </p>
+          </div>
+
+          {lastSavedAt && (
+            <DraftAgeWarning
+              lastSavedAt={
+                lastSavedAt
+              }
+            />
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={submitDOR}
@@ -1770,6 +2302,27 @@ export default function DORForm({
           </button>
 
           <button
+            type="button"
+            onClick={() =>
+              void saveDraft(false)
+            }
+            disabled={
+              saving ||
+              !selectedTrainee
+            }
+            style={{
+              ...draftButtonStyle,
+              opacity:
+                saving ||
+                !selectedTrainee
+                  ? 0.65
+                  : 1,
+            }}
+          >
+            Save Draft
+          </button>
+
+          <button
             type="submit"
             disabled={saving}
             style={{
@@ -1783,8 +2336,8 @@ export default function DORForm({
             }}
           >
             {saving
-              ? "Saving DOR..."
-              : "Save DOR & Generate BBCode"}
+              ? "Submitting DOR..."
+              : "Submit Final DOR & Generate BBCode"}
           </button>
         </div>
       </form>
@@ -1843,6 +2396,88 @@ export default function DORForm({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function getDraftStatusText(
+  status:
+    | "idle"
+    | "saving"
+    | "saved"
+    | "error",
+  lastSavedAt: string | null
+) {
+  if (status === "saving") {
+    return "Autosaving...";
+  }
+
+  if (status === "error") {
+    return "Autosave failed. Use Save Draft to retry.";
+  }
+
+  if (
+    status === "saved" &&
+    lastSavedAt
+  ) {
+    return `Saved ${formatSavedTime(
+      lastSavedAt
+    )}`;
+  }
+
+  return "Changes will autosave after you stop typing.";
+}
+
+function formatSavedTime(
+  value: string
+) {
+  return new Date(
+    value
+  ).toLocaleTimeString(
+    "en-GB",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
+}
+
+function DraftAgeWarning({
+  lastSavedAt,
+}: {
+  lastSavedAt: string;
+}) {
+  const ageHours =
+    (
+      Date.now() -
+      new Date(
+        lastSavedAt
+      ).getTime()
+    ) /
+    (
+      1000 *
+      60 *
+      60
+    );
+
+  if (ageHours < 18) {
+    return null;
+  }
+
+  const overdue =
+    ageHours >= 24;
+
+  return (
+    <div
+      style={
+        overdue
+          ? overdueDraftStyle
+          : warningDraftStyle
+      }
+    >
+      {overdue
+        ? "Overdue: draft is more than 24 hours old."
+        : "Warning: draft is approaching 24 hours old."}
     </div>
   );
 }
@@ -1975,6 +2610,60 @@ const buttonRowStyle = {
     "flex-end",
   gap: "12px",
   flexWrap: "wrap" as const,
+};
+
+const draftStatusCardStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  alignItems: "center",
+  gap: "16px",
+  padding: "16px",
+  marginBottom: "20px",
+  color: "#cbd5e1",
+  backgroundColor: "#172033",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+  flexWrap: "wrap" as const,
+};
+
+const draftStatusTextStyle = {
+  margin: "5px 0 0",
+  color: "#94a3b8",
+  fontSize: "13px",
+};
+
+const warningDraftStyle = {
+  padding: "8px 10px",
+  color: "#fde68a",
+  backgroundColor:
+    "rgba(120, 53, 15, 0.3)",
+  border: "1px solid #a16207",
+  borderRadius: "8px",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const overdueDraftStyle = {
+  padding: "8px 10px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border: "1px solid #991b1b",
+  borderRadius: "8px",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const draftButtonStyle = {
+  padding: "14px 20px",
+  backgroundColor: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "16px",
+  fontWeight: 600,
 };
 
 const primaryButtonStyle = {

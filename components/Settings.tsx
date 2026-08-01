@@ -138,6 +138,10 @@ export default function Settings({
       user.role
     );
 
+  const isProbationaryOfficer =
+    user.role ===
+    "Probationary Officer";
+
   const previewHasBlockingErrors =
     useMemo(() => {
       if (!parsedPreview) {
@@ -169,8 +173,14 @@ export default function Settings({
             badge.trim(),
           work_number:
             workNumber.trim(),
-          rank,
-          division,
+          rank:
+            isProbationaryOfficer
+              ? "Police Officer I"
+              : rank,
+          division:
+            isProbationaryOfficer
+              ? "Mission Row Division"
+              : division,
         })
         .eq(
           "id",
@@ -523,55 +533,71 @@ export default function Settings({
             />
           </Field>
 
-          <Field
-            label="LSPD Rank"
-          >
-            <select
-              value={rank}
-              onChange={(event) =>
-                setRank(
-                  event.target.value
-                )
-              }
-              style={input}
+          {isProbationaryOfficer ? (
+            <LockedProfileField
+              label="Police Rank"
+              value="Police Officer I"
+              helpText="Your rank will become editable once you become a Field Training Officer."
+            />
+          ) : (
+            <Field
+              label="LSPD Rank"
             >
-              {ranks.map(
-                (item) => (
-                  <option
-                    key={item}
-                    value={item}
-                  >
-                    {item}
-                  </option>
-                )
-              )}
-            </select>
-          </Field>
+              <select
+                value={rank}
+                onChange={(event) =>
+                  setRank(
+                    event.target.value
+                  )
+                }
+                style={input}
+              >
+                {ranks.map(
+                  (item) => (
+                    <option
+                      key={item}
+                      value={item}
+                    >
+                      {item}
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+          )}
 
-          <Field
-            label="Division"
-          >
-            <select
-              value={division}
-              onChange={(event) =>
-                setDivision(
-                  event.target.value
-                )
-              }
-              style={input}
+          {isProbationaryOfficer ? (
+            <LockedProfileField
+              label="Division"
+              value="Mission Row Division"
+              helpText="New Probationary Officers begin in Mission Row Division."
+            />
+          ) : (
+            <Field
+              label="Division"
             >
-              {divisions.map(
-                (item) => (
-                  <option
-                    key={item}
-                    value={item}
-                  >
-                    {item}
-                  </option>
-                )
-              )}
-            </select>
-          </Field>
+              <select
+                value={division}
+                onChange={(event) =>
+                  setDivision(
+                    event.target.value
+                  )
+                }
+                style={input}
+              >
+                {divisions.map(
+                  (item) => (
+                    <option
+                      key={item}
+                      value={item}
+                    >
+                      {item}
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+          )}
 
           <Field
             label="Work Number"
@@ -881,6 +907,32 @@ function Field({
   );
 }
 
+function LockedProfileField({
+  label,
+  value,
+  helpText,
+}: {
+  label: string;
+  value: string;
+  helpText: string;
+}) {
+  return (
+    <div style={lockedFieldStyle}>
+      <p style={lockedFieldLabelStyle}>
+        {label}
+      </p>
+
+      <p style={lockedFieldValueStyle}>
+        {value}
+      </p>
+
+      <p style={lockedFieldHelpStyle}>
+        🔒 {helpText}
+      </p>
+    </div>
+  );
+}
+
 function ImportPreview({
   preview,
 }: {
@@ -1050,6 +1102,34 @@ function PreviewDetail({
     </div>
   );
 }
+
+const lockedFieldStyle = {
+  padding: "14px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const lockedFieldLabelStyle = {
+  margin: "0 0 7px",
+  color: "#94a3b8",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const lockedFieldValueStyle = {
+  margin: "0 0 7px",
+  color: "white",
+  fontSize: "17px",
+  fontWeight: 800,
+};
+
+const lockedFieldHelpStyle = {
+  margin: 0,
+  color: "#94a3b8",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
 
 const pageStyle = {
   display: "grid",

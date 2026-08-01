@@ -609,8 +609,12 @@ export default function Home() {
       case "Dashboard":
         return (
           <Dashboard
+            user={user}
             trainees={
               trainees
+            }
+            openDOR={
+              openDOR
             }
           />
         );
