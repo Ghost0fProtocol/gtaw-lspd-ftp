@@ -37,7 +37,10 @@ function calculateProgress(
 
 
 
+
+
 export default function Records() {
+
 
   const [traineeRecords, setTraineeRecords] =
     useState<Trainee[]>([]);
@@ -56,80 +59,82 @@ export default function Records() {
 
 
 
+
+
+  async function loadTrainees(){
+
+    const data =
+      await getTrainees();
+
+
+
+    const formatted =
+      data.map((trainee:any) => ({
+
+
+        id:
+          trainee.id,
+
+
+        name:
+          trainee.profile?.name ??
+          "Unknown",
+
+
+        reference:
+          trainee.profile?.reference ??
+          "N/A",
+
+
+        status:
+          trainee.status ??
+          "Unknown",
+
+
+        progress:
+          calculateProgress(
+            trainee.notebook ?? []
+          ),
+
+
+        reports:
+          0,
+
+
+        lastActivity:
+          "No activity",
+
+
+        ftm:
+          trainee.ftm?.name ??
+          "",
+
+
+        notebook:
+          trainee.notebook ??
+          [],
+
+
+      }));
+
+
+    setTraineeRecords(
+      formatted
+    );
+
+  }
+
+
+
+
+
   useEffect(() => {
-
-    async function loadTrainees() {
-
-      const data =
-        await getTrainees();
-
-
-
-      const formatted =
-        data.map((trainee:any) => ({
-
-          id:
-            trainee.id,
-
-
-          name:
-            trainee.profile?.name ??
-            "Unknown",
-
-
-          reference:
-            trainee.profile?.reference ??
-            "N/A",
-
-
-          status:
-            trainee.status ??
-            "Unknown",
-
-
-
-          progress:
-            calculateProgress(
-              trainee.notebook ?? []
-            ),
-
-
-
-          reports:
-            0,
-
-
-          lastActivity:
-            "No activity",
-
-
-
-          ftm:
-            trainee.ftm?.name ??
-            "",
-
-
-
-          // IMPORTANT
-          // Keep database notebook
-          // fallback only if empty
-          notebook:
-            trainee.notebook ??
-            [],
-
-        }));
-
-
-      setTraineeRecords(
-        formatted
-      );
-
-    }
-
 
     loadTrainees();
 
   }, []);
+
+
 
 
 
@@ -143,6 +148,9 @@ export default function Records() {
             searchTerm.toLowerCase()
           )
     );
+
+
+
 
 
 
@@ -167,6 +175,7 @@ export default function Records() {
         onUpdate={
           updatedTrainee => {
 
+
             setTraineeRecords(
               current =>
                 current.map(
@@ -185,6 +194,7 @@ export default function Records() {
               updatedTrainee
             );
 
+
           }
         }
 
@@ -193,6 +203,8 @@ export default function Records() {
     );
 
   }
+
+
 
 
 
@@ -204,57 +216,40 @@ export default function Records() {
 
       <CreateTrainee
 
+
         onCancel={() =>
           setCreatingRecord(false)
         }
 
 
+
         onCreate={
-          newTrainee => {
+          async (newTrainee) => {
 
 
-            setTraineeRecords(
-              current => [
-
-                ...current,
-
-
-                {
-
-                  id:
-                    crypto.randomUUID(),
-
-
-                  ...newTrainee,
-
-
-                  ftm:
-                    "",
-
-
-                  notebook:
-                    newTrainee.notebook ??
-                    [],
-
-
-                  progress:
-                    0,
-
-
-                  reports:
-                    0,
-
-
-                  lastActivity:
-                    "Just created",
-
-                }
-
-              ]
+            console.log(
+              "CREATE TRAINEE REQUEST:",
+              newTrainee
             );
 
 
+            /*
+              TEMPORARY
+
+              Supabase creation will go here:
+
+              await createTrainee(
+                newTrainee
+              );
+
+
+              await loadTrainees();
+
+            */
+
+
             setCreatingRecord(false);
+
 
           }
         }
@@ -269,9 +264,13 @@ export default function Records() {
 
 
 
+
+
+
   return (
 
     <div>
+
 
       <div
         style={{
@@ -281,6 +280,7 @@ export default function Records() {
           marginBottom:"22px",
         }}
       >
+
 
         <div>
 
@@ -301,7 +301,9 @@ export default function Records() {
             Select a record to view its profile.
           </p>
 
+
         </div>
+
 
 
 
@@ -322,9 +324,11 @@ export default function Records() {
           }}
 
         >
+
           Add Record
 
         </button>
+
 
 
       </div>
@@ -333,9 +337,13 @@ export default function Records() {
 
 
 
+
       <input
 
-        value={searchTerm}
+        value={
+          searchTerm
+        }
+
 
         onChange={
           e =>
@@ -365,6 +373,8 @@ export default function Records() {
 
 
 
+
+
       <div
 
         style={{
@@ -375,16 +385,21 @@ export default function Records() {
 
       >
 
+
         {
           filteredTrainees.length === 0 ? (
 
             <p
+
               style={{
                 padding:"20px",
                 color:"#94a3b8",
               }}
+
             >
+
               No trainee records found.
+
             </p>
 
 
@@ -392,9 +407,11 @@ export default function Records() {
 
 
             filteredTrainees.map(
+
               trainee => (
 
                 <button
+
 
                   key={
                     trainee.id
@@ -409,20 +426,32 @@ export default function Records() {
 
 
                   style={{
+
                     width:"100%",
+
                     display:"grid",
+
                     gridTemplateColumns:
                       "2fr 1fr 1fr 1fr",
+
                     padding:"18px",
+
                     backgroundColor:
                       "transparent",
+
                     color:"white",
+
                     border:"none",
+
                     borderTop:
                       "1px solid #334155",
+
                     textAlign:"left",
+
                     cursor:"pointer",
+
                   }}
+
 
                 >
 
@@ -449,9 +478,11 @@ export default function Records() {
                 </button>
 
               )
+
             )
 
           )
+
         }
 
 

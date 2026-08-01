@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { getTrainees } from "../lib/trainees";
+import { getCurrentUser, logout } from "../lib/auth";
+
 import Login from "../components/Login";
+import CreateAccount from "../components/CreateAccount";
 import Sidebar from "../components/Sidebar";
 import Dashboard from "../components/Dashboard";
 import Records from "../components/Records";
 import DORForm from "../components/DORForm";
+
 
 const menuItems = [
   "Dashboard",
@@ -17,144 +22,359 @@ const menuItems = [
   "Settings",
 ];
 
+
+
 export default function Home() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [activePage, setActivePage] = useState("Dashboard");
-  const [trainees, setTrainees] = useState<any[]>([]);
+
+
+  const [user, setUser] =
+    useState<any>(null);
+
+
+  const [creatingAccount, setCreatingAccount] =
+    useState(false);
+
+
+  const [activePage, setActivePage] =
+    useState("Dashboard");
+
+
+  const [trainees, setTrainees] =
+    useState<any[]>([]);
+
+
+
 
   useEffect(() => {
-    async function loadTrainees() {
-      const data = await getTrainees();
+
+    const savedUser =
+      getCurrentUser();
+
+
+    if(savedUser){
+
+      setUser(savedUser);
+
+    }
+
+
+
+    async function load(){
+
+      const data =
+        await getTrainees();
+
 
       console.log(
-        "Supabase trainees:",
+        "Trainees:",
         data
       );
 
+
       setTrainees(data);
+
     }
 
-    loadTrainees();
+
+    load();
+
+
   }, []);
 
-  function pageContent() {
-    if (activePage === "Dashboard") {
-      return (
-        <Dashboard
-          trainees={trainees}
-        />
-      );
-    }
 
-    if (activePage === "Records") {
-      return <Records />;
-    }
 
-    if (
-      activePage === "Daily Observation Reports"
-    ) {
-      return <DORForm />;
-    }
+
+
+
+
+  if(creatingAccount){
 
     return (
-      <div
-        style={{
-          padding: "32px",
-          backgroundColor: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: "12px",
-        }}
-      >
-        <h2>{activePage}</h2>
 
-        <p style={{ color: "#94a3b8" }}>
-          This is the prototype{" "}
-          {activePage.toLowerCase()} page.
-        </p>
-      </div>
+      <CreateAccount
+
+        onBack={() =>
+          setCreatingAccount(false)
+        }
+
+      />
+
     );
+
   }
 
-  if (!loggedIn) {
+
+
+
+
+
+
+  if(!user){
+
     return (
+
       <Login
-        onLogin={() => setLoggedIn(true)}
+
+        onLogin={(loggedInUser)=>{
+
+          console.log(
+            "LOGIN SUCCESS",
+            loggedInUser
+          );
+
+
+          setUser(
+            loggedInUser
+          );
+
+        }}
+
+
+        onCreateAccount={()=>{
+
+          console.log(
+            "OPEN CREATE ACCOUNT"
+          );
+
+
+          setCreatingAccount(true);
+
+        }}
+
       />
+
     );
+
   }
 
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        backgroundColor: "#0f172a",
-        color: "white",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <Sidebar
-        menuItems={menuItems}
-        activePage={activePage}
-        onPageChange={setActivePage}
-      />
 
-      <section
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: "40px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "32px",
-          }}
-        >
-          <div>
+
+
+
+
+
+
+  function renderPage(){
+
+    switch(activePage){
+
+
+      case "Dashboard":
+
+        return (
+
+          <Dashboard
+            trainees={trainees}
+          />
+
+        );
+
+
+
+      case "Records":
+
+        return <Records />;
+
+
+
+      case "Daily Observation Reports":
+
+        return <DORForm />;
+
+
+
+      default:
+
+        return (
+
+          <div
+            style={{
+              padding:"32px",
+              backgroundColor:"#1e293b",
+              border:"1px solid #334155",
+              borderRadius:"12px",
+            }}
+          >
+
+            <h2>
+              {activePage}
+            </h2>
+
+
             <p
               style={{
-                margin: "0 0 6px",
-                color: "#94a3b8",
+                color:"#94a3b8",
+              }}
+            >
+
+              Prototype page.
+
+            </p>
+
+
+          </div>
+
+        );
+
+    }
+
+  }
+
+
+
+
+
+
+
+  return (
+
+    <main
+
+      style={{
+
+        minHeight:"100vh",
+
+        display:"flex",
+
+        backgroundColor:"#0f172a",
+
+        color:"white",
+
+        fontFamily:"Arial, sans-serif",
+
+      }}
+
+    >
+
+
+      <Sidebar
+
+        menuItems={menuItems}
+
+        activePage={activePage}
+
+        onPageChange={setActivePage}
+
+      />
+
+
+
+      <section
+
+        style={{
+
+          flex:1,
+
+          padding:"40px",
+
+        }}
+
+      >
+
+
+
+        <div
+
+          style={{
+
+            display:"flex",
+
+            justifyContent:"space-between",
+
+            alignItems:"center",
+
+            marginBottom:"32px",
+
+          }}
+
+        >
+
+
+          <div>
+
+            <p
+              style={{
+                color:"#94a3b8",
               }}
             >
               Welcome back
             </p>
 
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "32px",
-              }}
-            >
+
+            <h1>
               {activePage}
             </h1>
+
+
+            <p
+              style={{
+                color:"#94a3b8",
+              }}
+            >
+
+              {user.name} - {user.role}
+
+            </p>
+
+
           </div>
 
+
+
+
           <button
-            onClick={() => {
-              setLoggedIn(false);
-              setActivePage("Dashboard");
+
+            onClick={()=>{
+
+              logout();
+
+              setUser(null);
+
+              setActivePage(
+                "Dashboard"
+              );
+
             }}
+
             style={{
-              padding: "10px 16px",
-              backgroundColor: "#1e293b",
-              color: "white",
-              border:
-                "1px solid #475569",
-              borderRadius: "8px",
-              cursor: "pointer",
+
+              padding:"10px 16px",
+
+              backgroundColor:"#1e293b",
+
+              color:"white",
+
+              border:"1px solid #475569",
+
+              borderRadius:"8px",
+
+              cursor:"pointer",
+
             }}
+
           >
+
             Log Out
+
           </button>
+
+
+
         </div>
 
-        {pageContent()}
+
+
+
+
+        {renderPage()}
+
+
+
       </section>
+
+
     </main>
+
   );
+
 }

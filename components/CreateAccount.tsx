@@ -1,52 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { login } from "../lib/auth";
+import { createAccount } from "../lib/auth";
 
 
-type LoginProps = {
-  onLogin: (user:any)=>void;
-  onCreateAccount: ()=>void;
+type Props = {
+  onBack: () => void;
 };
 
 
-
-export default function Login({
-  onLogin,
-  onCreateAccount,
-}: LoginProps) {
+export default function CreateAccount({
+  onBack,
+}: Props) {
 
 
-  const [reference,setReference] =
+  const [name, setName] =
     useState("");
 
-  const [password,setPassword] =
+  const [reference, setReference] =
     useState("");
 
-
-
-  const [error,setError] =
+  const [password, setPassword] =
     useState("");
 
 
 
+  function submit() {
+
+    console.log(
+      "Create account clicked"
+    );
 
 
-  function handleLogin(){
+    if (
+      name.trim() === "" ||
+      reference.trim() === "" ||
+      password.trim() === ""
+    ) {
 
-    setError("");
-
-    const user =
-      login(
-        reference,
-        password
-      );
-
-
-    if(!user){
-
-      setError(
-        "Invalid reference or password"
+      alert(
+        "Please fill in all fields"
       );
 
       return;
@@ -54,10 +47,49 @@ export default function Login({
     }
 
 
-    onLogin(user);
+
+    const newUser = {
+
+      id:
+        crypto.randomUUID(),
+
+      name:
+        name.trim(),
+
+      reference:
+        reference.trim(),
+
+      password,
+
+      role:
+        "P1",
+
+    };
+
+
+
+    console.log(
+      "Creating:",
+      newUser
+    );
+
+
+
+    createAccount(
+      newUser
+    );
+
+
+
+    alert(
+      "Account created!"
+    );
+
+
+
+    onBack();
 
   }
-
 
 
 
@@ -65,6 +97,7 @@ export default function Login({
   return (
 
     <main
+
       style={{
         minHeight:"100vh",
         display:"flex",
@@ -74,9 +107,11 @@ export default function Login({
         color:"white",
         padding:"24px",
       }}
+
     >
 
       <div
+
         style={{
           width:"100%",
           maxWidth:"420px",
@@ -85,10 +120,11 @@ export default function Login({
           borderRadius:"16px",
           border:"1px solid #334155",
         }}
+
       >
 
         <h1>
-          FTP Training Portal
+          Create Account
         </h1>
 
 
@@ -97,9 +133,26 @@ export default function Login({
             color:"#94a3b8",
           }}
         >
-          Sign in to continue
+          New users start as P1.
         </p>
 
+
+
+        <input
+
+          placeholder="Name"
+
+          value={name}
+
+          onChange={(e) =>
+            setName(
+              e.target.value
+            )
+          }
+
+          style={inputStyle}
+
+        />
 
 
 
@@ -109,7 +162,7 @@ export default function Login({
 
           value={reference}
 
-          onChange={(e)=>
+          onChange={(e) =>
             setReference(
               e.target.value
             )
@@ -121,7 +174,6 @@ export default function Login({
 
 
 
-
         <input
 
           type="password"
@@ -130,7 +182,7 @@ export default function Login({
 
           value={password}
 
-          onChange={(e)=>
+          onChange={(e) =>
             setPassword(
               e.target.value
             )
@@ -142,41 +194,27 @@ export default function Login({
 
 
 
-
-        {
-          error &&
-
-          <p
-            style={{
-              color:"#f87171",
-            }}
-          >
-            {error}
-          </p>
-
-        }
-
-
-
-
         <button
 
-          onClick={handleLogin}
+          type="button"
+
+          onClick={submit}
 
           style={buttonStyle}
 
         >
 
-          Sign In
+          Create Account
 
         </button>
 
 
 
-
         <button
 
-          onClick={onCreateAccount}
+          type="button"
+
+          onClick={onBack}
 
           style={{
             ...buttonStyle,
@@ -186,7 +224,7 @@ export default function Login({
 
         >
 
-          Create Account
+          Back
 
         </button>
 
@@ -199,6 +237,7 @@ export default function Login({
   );
 
 }
+
 
 
 
@@ -239,7 +278,5 @@ const buttonStyle = {
   borderRadius:"8px",
 
   cursor:"pointer",
-
-  fontWeight:"bold" as const,
 
 };
