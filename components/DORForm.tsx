@@ -25,6 +25,14 @@ type Trainee = {
   workNumber: string;
 };
 
+type NotebookItem = {
+  id: string;
+  trainee_id: string;
+  section: string;
+  item_label: string;
+  completed: boolean;
+};
+
 type DORFormData = {
   probationaryOfficer: string;
   badgeNumber: string;
@@ -192,6 +200,26 @@ export default function DORForm({
 
   const [saving, setSaving] =
     useState(false);
+
+  const [
+    incompleteNotebookItems,
+    setIncompleteNotebookItems,
+  ] = useState<NotebookItem[]>([]);
+
+  const [
+    selectedNotebookItemIds,
+    setSelectedNotebookItemIds,
+  ] = useState<string[]>([]);
+
+  const [
+    loadingNotebookItems,
+    setLoadingNotebookItems,
+  ] = useState(false);
+
+  const [
+    notebookLoadError,
+    setNotebookLoadError,
+  ] = useState("");
 
   useEffect(() => {
     async function loadTrainees() {
@@ -374,6 +402,101 @@ export default function DORForm({
     );
   }
 
+  async function loadIncompleteNotebookItems(
+    traineeRecordId: string
+  ) {
+    setLoadingNotebookItems(true);
+    setNotebookLoadError("");
+    setSelectedNotebookItemIds([]);
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("notebook_items")
+        .select(`
+          id,
+          trainee_id,
+          section,
+          item_label,
+          completed
+        `)
+        .eq(
+          "trainee_id",
+          traineeRecordId
+        )
+        .eq(
+          "completed",
+          false
+        )
+        .not(
+          "item_label",
+          "ilike",
+          "%(BFA)%"
+        )
+        .not(
+          "item_label",
+          "ilike",
+          "%(EVOC)%"
+        )
+        .order(
+          "section",
+          {
+            ascending: true,
+          }
+        )
+        .order(
+          "item_label",
+          {
+            ascending: true,
+          }
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setIncompleteNotebookItems(
+        data ?? []
+      );
+    } catch (error) {
+      console.error(
+        "LOAD INCOMPLETE NOTEBOOK ITEMS ERROR",
+        error
+      );
+
+      setIncompleteNotebookItems([]);
+
+      setNotebookLoadError(
+        error instanceof Error
+          ? error.message
+          : "The trainee checklist could not be loaded."
+      );
+    } finally {
+      setLoadingNotebookItems(false);
+    }
+  }
+
+  function toggleNotebookItemSelection(
+    itemId: string
+  ) {
+    setFormError("");
+    setSuccessMessage("");
+
+    setSelectedNotebookItemIds(
+      (current) =>
+        current.includes(itemId)
+          ? current.filter(
+              (id) => id !== itemId
+            )
+          : [
+              ...current,
+              itemId,
+            ]
+    );
+  }
+
   async function getNextPatrolNumber(
     traineeRecordId: string
   ) {
@@ -442,6 +565,10 @@ export default function DORForm({
         })
       );
 
+      setIncompleteNotebookItems([]);
+      setSelectedNotebookItemIds([]);
+      setNotebookLoadError("");
+
       return;
     }
 
@@ -468,6 +595,10 @@ export default function DORForm({
           trainee.workNumber,
         patrolNumber: "",
       })
+    );
+
+    void loadIncompleteNotebookItems(
+      id
     );
 
     try {
@@ -717,6 +848,8 @@ export default function DORForm({
             null,
           ratings:
             evaluationRatings,
+          completed_notebook_items:
+            selectedNotebookItemIds,
           bbcode,
         });
 
@@ -727,12 +860,45 @@ export default function DORForm({
       const savedPatrolNumber =
         formData.patrolNumber;
 
+      let checklistUpdateWarning = "";
+
+      if (
+        selectedNotebookItemIds.length > 0
+      ) {
+        const {
+          error:
+            notebookUpdateError,
+        } = await supabase
+          .from("notebook_items")
+          .update({
+            completed: true,
+          })
+          .in(
+            "id",
+            selectedNotebookItemIds
+          )
+          .eq(
+            "trainee_id",
+            selectedTrainee
+          );
+
+        if (notebookUpdateError) {
+          console.error(
+            "UPDATE NOTEBOOK ITEMS ERROR",
+            notebookUpdateError
+          );
+
+          checklistUpdateWarning =
+            " The DOR saved, but the selected checklist items could not be updated.";
+        }
+      }
+
       setGeneratedBBCode(
         bbcode
       );
 
       setSuccessMessage(
-        `DOR Patrol ${savedPatrolNumber} saved successfully. The form has been cleared and the BBCode is ready to copy below.`
+        `DOR Patrol ${savedPatrolNumber} saved successfully.${checklistUpdateWarning} The form has been cleared and the BBCode is ready to copy below.`
       );
 
       setSelectedTrainee("");
@@ -750,6 +916,10 @@ export default function DORForm({
       setEvaluationRatings(
         createInitialRatings()
       );
+
+      setIncompleteNotebookItems([]);
+      setSelectedNotebookItemIds([]);
+      setNotebookLoadError("");
 
       setCopied(false);
 
@@ -822,6 +992,10 @@ export default function DORForm({
       createInitialRatings()
     );
 
+    setIncompleteNotebookItems([]);
+    setSelectedNotebookItemIds([]);
+    setNotebookLoadError("");
+
     setGeneratedBBCode("");
     setFormError("");
     setSuccessMessage("");
@@ -839,6 +1013,34 @@ export default function DORForm({
     Object.values(
       evaluationRatings
     ).filter(Boolean).length;
+
+  const notebookItemsBySection =
+    incompleteNotebookItems.reduce(
+      (
+        grouped,
+        item
+      ) => {
+        if (
+          !grouped[
+            item.section
+          ]
+        ) {
+          grouped[
+            item.section
+          ] = [];
+        }
+
+        grouped[
+          item.section
+        ].push(item);
+
+        return grouped;
+      },
+      {} as Record<
+        string,
+        NotebookItem[]
+      >
+    );
 
   return (
     <div>
@@ -1207,6 +1409,131 @@ export default function DORForm({
             placeholder="Describe incidents attended, tasks completed and notable activity."
             style={textareaStyle}
           />
+        </div>
+
+        <div style={cardStyle}>
+          <div
+            style={
+              sectionHeaderStyle
+            }
+          >
+            <div>
+              <h3
+                style={{
+                  ...headingStyle,
+                  marginBottom: "6px",
+                }}
+              >
+                Checklist Items Completed This Patrol
+              </h3>
+
+              <p
+                style={{
+                  ...subTextStyle,
+                  margin: 0,
+                }}
+              >
+                Select incomplete notebook items completed during this patrol.
+                They will be checked off after the DOR saves successfully.
+              </p>
+            </div>
+
+            <span
+              style={
+                ratingCountStyle
+              }
+            >
+              {
+                selectedNotebookItemIds.length
+              }{" "}
+              selected
+            </span>
+          </div>
+
+          {loadingNotebookItems ? (
+            <p style={subTextStyle}>
+              Loading incomplete checklist items...
+            </p>
+          ) : notebookLoadError ? (
+            <div style={errorStyle}>
+              Unable to load the trainee checklist:{" "}
+              {notebookLoadError}
+            </div>
+          ) : !selectedTrainee ? (
+            <div style={emptyChecklistStyle}>
+              Select a trainee to load their incomplete checklist items.
+            </div>
+          ) : incompleteNotebookItems.length === 0 ? (
+            <div style={completeChecklistStyle}>
+              All available checklist items are already complete.
+            </div>
+          ) : (
+            <div style={checklistSectionsStyle}>
+              {Object.entries(
+                notebookItemsBySection
+              ).map(
+                ([
+                  section,
+                  sectionItems,
+                ]) => (
+                  <div
+                    key={section}
+                    style={
+                      checklistSectionStyle
+                    }
+                  >
+                    <h4
+                      style={
+                        checklistSectionHeadingStyle
+                      }
+                    >
+                      {section}
+                    </h4>
+
+                    <div
+                      style={
+                        checklistItemsStyle
+                      }
+                    >
+                      {sectionItems.map(
+                        (item) => (
+                          <label
+                            key={item.id}
+                            style={
+                              checklistItemStyle
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                selectedNotebookItemIds.includes(
+                                  item.id
+                                )
+                              }
+                              onChange={() =>
+                                toggleNotebookItemSelection(
+                                  item.id
+                                )
+                              }
+                              disabled={
+                                saving
+                              }
+                            />
+
+                            <span>
+                              {
+                                item.item_label
+                              }
+                            </span>
+                          </label>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </div>
 
         <div style={cardStyle}>
@@ -1688,4 +2015,64 @@ const smallButtonStyle = {
   borderRadius: "7px",
   cursor: "pointer",
   fontWeight: 600,
+};
+
+const checklistSectionsStyle = {
+  display: "grid",
+  gap: "18px",
+  marginTop: "20px",
+};
+
+const checklistSectionStyle = {
+  overflow: "hidden",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const checklistSectionHeadingStyle = {
+  margin: 0,
+  padding: "13px 16px",
+  color: "#93c5fd",
+  backgroundColor: "#111827",
+  borderBottom: "1px solid #334155",
+};
+
+const checklistItemsStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "10px",
+  padding: "14px",
+};
+
+const checklistItemStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "10px",
+  padding: "12px",
+  backgroundColor: "#172033",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  cursor: "pointer",
+  lineHeight: 1.4,
+};
+
+const emptyChecklistStyle = {
+  marginTop: "18px",
+  padding: "16px",
+  color: "#94a3b8",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const completeChecklistStyle = {
+  marginTop: "18px",
+  padding: "16px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "8px",
 };
