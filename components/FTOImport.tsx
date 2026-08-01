@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabase";
 type Props = {
   user: any;
   onSubmitted: () => void;
+  onSkip?: () => void;
 };
 
 type Profile = {
@@ -23,6 +24,7 @@ type Profile = {
 export default function FTOImport({
   user,
   onSubmitted,
+  onSkip,
 }: Props) {
   const [
     profile,
@@ -344,30 +346,43 @@ export default function FTOImport({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={
-            submitRequest
-          }
-          disabled={submitting}
-          style={{
-            ...buttonStyle,
-            opacity:
-              submitting
-                ? 0.7
-                : 1,
-            cursor:
-              submitting
-                ? "not-allowed"
-                : "pointer",
-          }}
-        >
-          {submitting
-            ? "Submitting Request..."
-            : isPending
-              ? "Update FTO Request"
-              : "Submit FTO Request"}
-        </button>
+        <div style={buttonRowStyle}>
+          {onSkip && (
+            <button
+              type="button"
+              onClick={onSkip}
+              disabled={submitting}
+              style={skipButtonStyle}
+            >
+              Skip FTO Import
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={
+              submitRequest
+            }
+            disabled={submitting}
+            style={{
+              ...buttonStyle,
+              opacity:
+                submitting
+                  ? 0.7
+                  : 1,
+              cursor:
+                submitting
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            {submitting
+              ? "Submitting Request..."
+              : isPending
+                ? "Update FTO Request"
+                : "Submit FTO Request"}
+          </button>
+        </div>
       </div>
     </main>
   );
@@ -524,4 +539,24 @@ const buttonStyle = {
   borderRadius: "8px",
   fontSize: "16px",
   fontWeight: 800,
+};
+
+
+const buttonRowStyle = {
+  display: "flex",
+  gap: "12px",
+  flexWrap: "wrap" as const,
+};
+
+const skipButtonStyle = {
+  flex: 1,
+  minWidth: "170px",
+  padding: "14px",
+  color: "white",
+  backgroundColor: "#475569",
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "16px",
+  fontWeight: 800,
+  cursor: "pointer",
 };

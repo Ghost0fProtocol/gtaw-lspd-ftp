@@ -25,10 +25,19 @@ import DORForm from "../components/DORForm";
 import Settings from "../components/Settings";
 import MyNotebook from "../components/MyNotebook";
 import P1Records from "../components/P1Records";
+import RoleRequests from "../components/RoleRequests";
+import MyFTOFile from "../components/MyFTOFile";
 
 type InitialRole =
   | "Probationary Officer"
   | "Field Training Officer";
+
+const onboardingBypassRoles = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "STAFF",
+  "LSPD STAFF",
+];
 
 export default function Home() {
   const [
@@ -268,7 +277,13 @@ export default function Home() {
       return;
     }
 
+    const canBypassFTOOnboarding =
+      onboardingBypassRoles.includes(
+        currentProfile.role
+      );
+
     const isFTOPath =
+      !canBypassFTOOnboarding &&
       requestedRole ===
         "Field Training Officer" &&
       currentProfile.role !==
@@ -524,6 +539,25 @@ export default function Home() {
             })
           );
         }}
+        onSkip={
+          onboardingBypassRoles.includes(
+            user.role
+          )
+            ? () => {
+                setNeedsFTOImport(
+                  false
+                );
+
+                setAwaitingFTOApproval(
+                  false
+                );
+
+                setActivePage(
+                  "Dashboard"
+                );
+              }
+            : undefined
+        }
       />
     );
   }
@@ -543,6 +577,25 @@ export default function Home() {
             true
           );
         }}
+        onSkip={
+          onboardingBypassRoles.includes(
+            user.role
+          )
+            ? () => {
+                setAwaitingFTOApproval(
+                  false
+                );
+
+                setNeedsFTOImport(
+                  false
+                );
+
+                setActivePage(
+                  "Dashboard"
+                );
+              }
+            : undefined
+        }
         onLogout={async () => {
           await logout();
           resetSession();
@@ -597,6 +650,20 @@ export default function Home() {
 
       case "Records":
         return <Records />;
+
+      case "Role Requests":
+        return (
+          <RoleRequests
+            user={user}
+          />
+        );
+
+      case "My FTO File":
+        return (
+          <MyFTOFile
+            user={user}
+          />
+        );
 
       case "Settings":
         return (
@@ -704,10 +771,12 @@ export default function Home() {
 function PendingFTOApproval({
   user,
   onEditRequest,
+  onSkip,
   onLogout,
 }: {
   user: any;
   onEditRequest: () => void;
+  onSkip?: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -774,6 +843,20 @@ function PendingFTOApproval({
           >
             Edit Submitted File
           </button>
+
+          {onSkip && (
+            <button
+              type="button"
+              onClick={
+                onSkip
+              }
+              style={
+                skipButtonStyle
+              }
+            >
+              Skip FTO Import
+            </button>
+          )}
 
           <button
             type="button"
@@ -925,6 +1008,19 @@ const pendingLogoutButtonStyle = {
   color: "white",
   background:
     "#475569",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+
+const skipButtonStyle = {
+  flex: 1,
+  minWidth: "170px",
+  padding: "13px",
+  color: "white",
+  background: "#2563eb",
   border: "none",
   borderRadius: "8px",
   cursor: "pointer",

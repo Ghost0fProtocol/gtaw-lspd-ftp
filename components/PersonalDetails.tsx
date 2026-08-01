@@ -28,6 +28,24 @@ const ranks = [
   "Chief of Police",
 ];
 
+const divisions = [
+  "Mission Row Division",
+  "Traffic Division",
+  "Detectives Bureau",
+  "Gang Enforcement Division",
+  "Metropolitan Division",
+  "Field Training Program",
+  "Air Support Division",
+];
+
+const divisionSelectableRoles = [
+  "Field Training Officer",
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "STAFF",
+  "LSPD STAFF",
+];
+
 export default function PersonalDetails({
   user,
   onComplete,
@@ -50,6 +68,13 @@ export default function PersonalDetails({
   );
 
   const [
+    division,
+    setDivision,
+  ] = useState(
+    "Mission Row Division"
+  );
+
+  const [
     error,
     setError,
   ] = useState("");
@@ -68,6 +93,14 @@ export default function PersonalDetails({
     saving,
     setSaving,
   ] = useState(false);
+
+  const canSelectDivision =
+    divisionSelectableRoles.includes(
+      user.role
+    ) ||
+    divisionSelectableRoles.includes(
+      user.requested_role
+    );
 
   useEffect(() => {
     async function loadProfile() {
@@ -119,6 +152,14 @@ export default function PersonalDetails({
           : "Police Officer I"
       );
 
+      setDivision(
+        divisions.includes(
+          data.division
+        )
+          ? data.division
+          : "Mission Row Division"
+      );
+
       setLoading(false);
     }
 
@@ -155,6 +196,23 @@ export default function PersonalDetails({
       return;
     }
 
+    const divisionToSave =
+      canSelectDivision
+        ? division
+        : "Mission Row Division";
+
+    if (
+      !divisions.includes(
+        divisionToSave
+      )
+    ) {
+      setError(
+        "Please select a valid division."
+      );
+
+      return;
+    }
+
     setSaving(true);
 
     const {
@@ -167,6 +225,8 @@ export default function PersonalDetails({
         work_number:
           workNumber.trim(),
         rank,
+        division:
+          divisionToSave,
         profile_complete:
           true,
       })
@@ -300,6 +360,58 @@ export default function PersonalDetails({
           in-character police rank.
         </p>
 
+        {canSelectDivision ? (
+          <>
+            <label style={labelStyle}>
+              Division
+            </label>
+
+            <select
+              value={division}
+              onChange={(event) =>
+                setDivision(
+                  event.target.value
+                )
+              }
+              disabled={saving}
+              style={inputStyle}
+            >
+              {divisions.map(
+                (divisionOption) => (
+                  <option
+                    key={
+                      divisionOption
+                    }
+                    value={
+                      divisionOption
+                    }
+                  >
+                    {
+                      divisionOption
+                    }
+                  </option>
+                )
+              )}
+            </select>
+          </>
+        ) : (
+          <div style={fixedDivisionStyle}>
+            <p style={fixedDivisionLabelStyle}>
+              Division
+            </p>
+
+            <p style={fixedDivisionValueStyle}>
+              Mission Row Division
+            </p>
+
+            <p style={fixedDivisionHelpStyle}>
+              New Probationary Officers
+              begin in Mission Row
+              Division.
+            </p>
+          </div>
+        )}
+
         {error && (
           <p style={errorStyle}>
             {error}
@@ -404,6 +516,36 @@ const labelStyle = {
 const rankHelpStyle = {
   marginTop: "-4px",
   marginBottom: "16px",
+  color: "#94a3b8",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
+
+const fixedDivisionStyle = {
+  padding: "14px",
+  marginBottom: "16px",
+  backgroundColor:
+    "#0f172a",
+  border:
+    "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const fixedDivisionLabelStyle = {
+  margin:
+    "0 0 5px",
+  color: "#94a3b8",
+  fontSize: "13px",
+};
+
+const fixedDivisionValueStyle = {
+  margin:
+    "0 0 5px",
+  fontWeight: 800,
+};
+
+const fixedDivisionHelpStyle = {
+  margin: 0,
   color: "#94a3b8",
   fontSize: "12px",
   lineHeight: 1.5,
