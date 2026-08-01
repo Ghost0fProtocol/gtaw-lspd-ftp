@@ -8,18 +8,14 @@ import {
 
 import { getTrainees } from "../lib/trainees";
 import { supabase } from "../lib/supabase";
+import {
+  DORRating,
+  generateDORBBCode,
+} from "../lib/generateDORBBCode";
 
 type Props = {
   traineeId?: string;
 };
-
-type Rating =
-  | "1"
-  | "2"
-  | "3"
-  | "4"
-  | "N/O"
-  | "";
 
 type Trainee = {
   id: string;
@@ -29,126 +25,46 @@ type Trainee = {
   workNumber: string;
 };
 
-type EvaluationCategory = {
-  id: number;
-  section: string;
-  label: string;
-};
-
 type DORFormData = {
   probationaryOfficer: string;
   badgeNumber: string;
   rank: string;
   workNumber: string;
-
   fieldTrainingOfficer: string;
-
+  ftoBadgeNumber: string;
   patrolNumber: string;
   date: string;
   startTime: string;
   endTime: string;
   duration: string;
-
   incidentsTasks: string;
-
   belowStandard: string;
   aboveStandard: string;
   learningGoals: string;
   roleplayRemarks: string;
 };
 
-const evaluationCategories: EvaluationCategory[] = [
-  {
-    id: 1,
-    section: "APPEARANCE",
-    label: "General Appearance",
-  },
-  {
-    id: 2,
-    section: "ATTITUDE",
-    label: "Attitude towards the Job and Feedback",
-  },
-  {
-    id: 3,
-    section: "KNOWLEDGE",
-    label: "Department Policies/Procedures",
-  },
-  {
-    id: 4,
-    section: "KNOWLEDGE",
-    label: "Law, Penal Code, Search and Seizure",
-  },
-  {
-    id: 5,
-    section: "PERFORMANCE",
-    label: "Driving Skill: General",
-  },
-  {
-    id: 6,
-    section: "PERFORMANCE",
-    label:
-      "Driving Skill: Orientation and Response Time to Calls",
-  },
-  {
-    id: 7,
-    section: "PERFORMANCE",
-    label:
-      "Report Writing: Accuracy/Grammar/Organisation",
-  },
-  {
-    id: 8,
-    section: "PERFORMANCE",
-    label: "Field Performance",
-  },
-  {
-    id: 9,
-    section: "PERFORMANCE",
-    label: "Self-Initiated Field Activities",
-  },
-  {
-    id: 10,
-    section: "PERFORMANCE",
-    label: "Field Activities: Traffic Stop",
-  },
-  {
-    id: 11,
-    section: "PERFORMANCE",
-    label: "Field Activities: Arrest Procedure",
-  },
-  {
-    id: 12,
-    section: "PERFORMANCE",
-    label: "Officer Safety Principles",
-  },
-  {
-    id: 13,
-    section: "PERFORMANCE",
-    label:
-      "Control of Conflict: Voice Command/Physical Skill",
-  },
-  {
-    id: 14,
-    section: "PERFORMANCE",
-    label: "Use of Common Sense and Good Judgement",
-  },
-  {
-    id: 15,
-    section: "PERFORMANCE",
-    label: "Radio/MDC: Use of Mobile Data Computer",
-  },
-  {
-    id: 16,
-    section: "PERFORMANCE",
-    label: "Radio: Articulation of Transmissions",
-  },
-  {
-    id: 17,
-    section: "RELATIONSHIPS",
-    label: "With Citizens/Employees in General",
-  },
+const evaluationCategories = [
+  { id: 1, section: "APPEARANCE", label: "General Appearance" },
+  { id: 2, section: "ATTITUDE", label: "Attitude towards the Job and Feedback" },
+  { id: 3, section: "KNOWLEDGE", label: "Department Policies/Procedures" },
+  { id: 4, section: "KNOWLEDGE", label: "Law, Penal Code, Search and Seizure" },
+  { id: 5, section: "PERFORMANCE", label: "Driving Skill: General" },
+  { id: 6, section: "PERFORMANCE", label: "Driving Skill: Orientation and Response Time to Calls" },
+  { id: 7, section: "PERFORMANCE", label: "Report Writing: Accuracy/Grammar/Organisation" },
+  { id: 8, section: "PERFORMANCE", label: "Field Performance" },
+  { id: 9, section: "PERFORMANCE", label: "Self-Initiated Field Activities" },
+  { id: 10, section: "PERFORMANCE", label: "Field Activities: Traffic Stop" },
+  { id: 11, section: "PERFORMANCE", label: "Field Activities: Arrest Procedure" },
+  { id: 12, section: "PERFORMANCE", label: "Officer Safety Principles" },
+  { id: 13, section: "PERFORMANCE", label: "Control of Conflict: Voice Command/Physical Skill" },
+  { id: 14, section: "PERFORMANCE", label: "Use of Common Sense and Good Judgement" },
+  { id: 15, section: "PERFORMANCE", label: "Radio/MDC: Use of Mobile Data Computer" },
+  { id: 16, section: "PERFORMANCE", label: "Radio: Articulation of Transmissions" },
+  { id: 17, section: "RELATIONSHIPS", label: "With Citizens/Employees in General" },
 ];
 
-const ratings: Exclude<Rating, "">[] = [
+const ratings: Exclude<DORRating, "">[] = [
   "1",
   "2",
   "3",
@@ -161,17 +77,14 @@ const initialFormData: DORFormData = {
   badgeNumber: "",
   rank: "",
   workNumber: "",
-
   fieldTrainingOfficer: "",
-
+  ftoBadgeNumber: "",
   patrolNumber: "",
   date: "",
   startTime: "",
   endTime: "",
   duration: "",
-
   incidentsTasks: "",
-
   belowStandard: "",
   aboveStandard: "",
   learningGoals: "",
@@ -180,11 +93,11 @@ const initialFormData: DORFormData = {
 
 function createInitialRatings() {
   return evaluationCategories.reduce(
-    (ratingsRecord, category) => {
-      ratingsRecord[category.id] = "";
-      return ratingsRecord;
+    (record, category) => {
+      record[category.id] = "";
+      return record;
     },
-    {} as Record<number, Rating>
+    {} as Record<number, DORRating>
   );
 }
 
@@ -221,57 +134,32 @@ function calculateDuration(
   const minutes =
     difference % 60;
 
-  if (hours === 0) {
-    return `${minutes}m`;
-  }
-
-  if (minutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${minutes}m`;
-}
-
-function formatDateForBBCode(
-  date: string
-) {
-  if (!date) {
-    return "";
-  }
-
-  const [
-    year,
-    month,
-    day,
-  ] = date.split("-");
-
-  return `${day}/${month}/${year}`;
+  return `${String(hours).padStart(2, "0")}:${String(
+    minutes
+  ).padStart(2, "0")}`;
 }
 
 export default function DORForm({
   traineeId,
 }: Props) {
-  const [
-    trainees,
-    setTrainees,
-  ] = useState<Trainee[]>([]);
+  const [trainees, setTrainees] =
+    useState<Trainee[]>([]);
 
-  const [
-    selectedTrainee,
-    setSelectedTrainee,
-  ] = useState("");
+  const [selectedTrainee, setSelectedTrainee] =
+    useState("");
 
-  const [
-    formData,
-    setFormData,
-  ] = useState<DORFormData>(
-    initialFormData
-  );
+  const [ftoId, setFtoId] =
+    useState("");
+
+  const [formData, setFormData] =
+    useState<DORFormData>(
+      initialFormData
+    );
 
   const [
     evaluationRatings,
     setEvaluationRatings,
-  ] = useState<Record<number, Rating>>(
+  ] = useState<Record<number, DORRating>>(
     createInitialRatings
   );
 
@@ -280,25 +168,30 @@ export default function DORForm({
     setGeneratedBBCode,
   ] = useState("");
 
-  const [
-    copied,
-    setCopied,
-  ] = useState(false);
+  const [copied, setCopied] =
+    useState(false);
 
   const [
     traineeLoadError,
     setTraineeLoadError,
   ] = useState("");
 
-  const [
-    formError,
-    setFormError,
-  ] = useState("");
+  const [formError, setFormError] =
+    useState("");
+
+  const [successMessage, setSuccessMessage] =
+    useState("");
+
+  const [loadingFTO, setLoadingFTO] =
+    useState(true);
 
   const [
-    loadingFTO,
-    setLoadingFTO,
-  ] = useState(true);
+    loadingPatrolNumber,
+    setLoadingPatrolNumber,
+  ] = useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
 
   useEffect(() => {
     async function loadTrainees() {
@@ -308,50 +201,37 @@ export default function DORForm({
         const data =
           await getTrainees();
 
-        const formatted: Trainee[] =
+        setTrainees(
           data.map(
             (trainee: any) => ({
               id: trainee.id,
-
               name:
                 trainee.profile?.name ??
                 trainee.name ??
                 "Unknown",
-
               rank:
                 trainee.profile?.rank ??
                 "Police Officer I",
-
               badgeNumber:
-                trainee.profile
-                  ?.badge_number ??
+                trainee.profile?.badge_number ??
                 "",
-
               workNumber:
-                trainee.profile
-                  ?.work_number ??
+                trainee.profile?.work_number ??
                 "",
             })
-          );
-
-        setTrainees(formatted);
+          )
+        );
       } catch (error: unknown) {
         console.error(
           "GET TRAINEES ERROR",
           error
         );
 
-        if (
+        setTraineeLoadError(
           error instanceof Error
-        ) {
-          setTraineeLoadError(
-            error.message
-          );
-        } else {
-          setTraineeLoadError(
-            "Unable to load trainees."
-          );
-        }
+            ? error.message
+            : "Unable to load trainees."
+        );
       }
     }
 
@@ -377,15 +257,19 @@ export default function DORForm({
           userData.user;
 
         if (!user) {
-          return;
+          throw new Error(
+            "No logged-in user was found."
+          );
         }
+
+        setFtoId(user.id);
 
         const {
           data: profile,
           error: profileError,
         } = await supabase
           .from("profiles")
-          .select("name")
+          .select("name, badge_number")
           .eq("id", user.id)
           .single();
 
@@ -396,16 +280,22 @@ export default function DORForm({
         setFormData(
           (current) => ({
             ...current,
-
             fieldTrainingOfficer:
-              profile?.name ??
-              "",
+              profile?.name ?? "",
+            ftoBadgeNumber:
+              profile?.badge_number ?? "",
           })
         );
       } catch (error) {
         console.error(
           "LOAD FTO PROFILE ERROR",
           error
+        );
+
+        setFormError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load the logged-in FTO."
         );
       } finally {
         setLoadingFTO(false);
@@ -423,7 +313,7 @@ export default function DORForm({
       return;
     }
 
-    selectTrainee(traineeId);
+    void selectTrainee(traineeId);
   }, [traineeId, trainees]);
 
   function updateField(
@@ -431,6 +321,7 @@ export default function DORForm({
     value: string
   ) {
     setFormError("");
+    setSuccessMessage("");
 
     setFormData(
       (current) => ({
@@ -447,6 +338,7 @@ export default function DORForm({
     value: string
   ) {
     setFormError("");
+    setSuccessMessage("");
 
     setFormData(
       (current) => {
@@ -457,7 +349,6 @@ export default function DORForm({
 
         return {
           ...updated,
-
           duration:
             calculateDuration(
               updated.startTime,
@@ -470,9 +361,10 @@ export default function DORForm({
 
   function updateRating(
     id: number,
-    rating: Rating
+    rating: DORRating
   ) {
     setFormError("");
+    setSuccessMessage("");
 
     setEvaluationRatings(
       (current) => ({
@@ -482,23 +374,71 @@ export default function DORForm({
     );
   }
 
-  function selectTrainee(
+  async function getNextPatrolNumber(
+    traineeRecordId: string
+  ) {
+    setLoadingPatrolNumber(true);
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("dors")
+        .select("patrol_number")
+        .eq(
+          "trainee_id",
+          traineeRecordId
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      const highestPatrolNumber =
+        (data ?? []).reduce(
+          (highest, dor) => {
+            const patrolNumber =
+              Number(
+                dor.patrol_number
+              );
+
+            return Number.isInteger(
+              patrolNumber
+            ) &&
+              patrolNumber >
+                highest
+              ? patrolNumber
+              : highest;
+          },
+          0
+        );
+
+      return String(
+        highestPatrolNumber + 1
+      );
+    } finally {
+      setLoadingPatrolNumber(false);
+    }
+  }
+
+  async function selectTrainee(
     id: string
   ) {
     setSelectedTrainee(id);
     setFormError("");
+    setSuccessMessage("");
+    setGeneratedBBCode("");
 
     if (id === "") {
       setFormData(
         (current) => ({
           ...current,
-
-          probationaryOfficer:
-            "",
-
+          probationaryOfficer: "",
           badgeNumber: "",
           rank: "",
           workNumber: "",
+          patrolNumber: "",
         })
       );
 
@@ -518,20 +458,46 @@ export default function DORForm({
     setFormData(
       (current) => ({
         ...current,
-
         probationaryOfficer:
           trainee.name,
-
         badgeNumber:
           trainee.badgeNumber,
-
         rank:
           trainee.rank,
-
         workNumber:
           trainee.workNumber,
+        patrolNumber: "",
       })
     );
+
+    try {
+      const nextPatrolNumber =
+        await getNextPatrolNumber(id);
+
+      setFormData(
+        (current) => ({
+          ...current,
+          patrolNumber:
+            nextPatrolNumber,
+        })
+      );
+    } catch (error: any) {
+      console.warn(
+        "LOAD NEXT PATROL NUMBER ERROR:",
+        error?.message ?? error
+      );
+
+      setFormData(
+        (current) => ({
+          ...current,
+          patrolNumber: "1",
+        })
+      );
+
+      setFormError(
+        "The saved patrol history could not be read, so the patrol number has defaulted to 1."
+      );
+    }
   }
 
   function useCurrentUTCDateAndTime() {
@@ -564,54 +530,96 @@ export default function DORForm({
     setFormData(
       (current) => ({
         ...current,
-
         date:
           `${year}-${month}-${day}`,
-
         startTime:
           `${hours}:${minutes}`,
-
         endTime: "",
         duration: "",
       })
     );
 
     setFormError("");
+    setSuccessMessage("");
   }
 
   function validateForm() {
+    const missingItems: string[] = [];
+
     if (!selectedTrainee) {
-      return "Please select a trainee.";
+      missingItems.push("Trainee");
+    }
+
+    if (!ftoId) {
+      missingItems.push(
+        "Logged-in FTO account"
+      );
     }
 
     if (
       !formData.fieldTrainingOfficer
         .trim()
     ) {
-      return "Field Training Officer is missing.";
+      missingItems.push(
+        "Field Training Officer name"
+      );
+    }
+
+    if (
+      !formData.ftoBadgeNumber
+        .trim()
+    ) {
+      missingItems.push(
+        "FTO badge / serial number"
+      );
     }
 
     if (
       !formData.patrolNumber.trim()
     ) {
-      return "Please enter the trainee's FTP patrol number.";
+      missingItems.push(
+        "FTP patrol number"
+      );
+    } else {
+      const patrolNumber =
+        Number(formData.patrolNumber);
+
+      if (
+        !Number.isInteger(
+          patrolNumber
+        ) ||
+        patrolNumber < 1
+      ) {
+        missingItems.push(
+          "Valid FTP patrol number"
+        );
+      }
     }
 
     if (!formData.date) {
-      return "Please select the patrol date.";
+      missingItems.push(
+        "Patrol date"
+      );
     }
 
-    if (
-      !formData.startTime ||
-      !formData.endTime
-    ) {
-      return "Please enter the patrol start and end times.";
+    if (!formData.startTime) {
+      missingItems.push(
+        "Start time"
+      );
+    }
+
+    if (!formData.endTime) {
+      missingItems.push(
+        "End time"
+      );
     }
 
     if (
       !formData.incidentsTasks.trim()
     ) {
-      return "Please enter the incidents or tasks completed.";
+      missingItems.push(
+        "Incidents / tasks"
+      );
     }
 
     const missingRatings =
@@ -622,16 +630,31 @@ export default function DORForm({
           ]
       );
 
+    missingRatings.forEach(
+      (category) => {
+        missingItems.push(
+          `Rating: ${category.label}`
+        );
+      }
+    );
+
     if (
-      missingRatings.length > 0
+      missingItems.length === 0
     ) {
-      return `Please complete all evaluation ratings. ${missingRatings.length} remaining.`;
+      return "";
     }
 
-    return "";
+    return (
+      "Please complete the following before saving:\n\n" +
+      missingItems
+        .map(
+          (item) => `• ${item}`
+        )
+        .join("\n")
+    );
   }
 
-  function generateBBCode() {
+  async function saveDOR() {
     const validationError =
       validateForm();
 
@@ -641,114 +664,122 @@ export default function DORForm({
       );
 
       setGeneratedBBCode("");
+      setSuccessMessage("");
 
       return;
     }
 
+    setSaving(true);
     setFormError("");
+    setSuccessMessage("");
 
-    let output = "";
+    const bbcode =
+      generateDORBBCode(
+        formData,
+        evaluationRatings
+      );
 
-    output +=
-      `[b]DAILY OBSERVATION REPORT[/b]\n\n`;
+    try {
+      const {
+        error,
+      } = await supabase
+        .from("dors")
+        .insert({
+          trainee_id:
+            selectedTrainee,
+          fto_id:
+            ftoId,
+          patrol_number:
+            Number(
+              formData.patrolNumber
+            ),
+          patrol_date:
+            formData.date,
+          start_time:
+            formData.startTime,
+          end_time:
+            formData.endTime,
+          duration:
+            formData.duration,
+          incidents:
+            formData.incidentsTasks.trim(),
+          below_standard:
+            formData.belowStandard.trim() ||
+            null,
+          above_standard:
+            formData.aboveStandard.trim() ||
+            null,
+          learning_goals:
+            formData.learningGoals.trim() ||
+            null,
+          roleplay_remarks:
+            formData.roleplayRemarks.trim() ||
+            null,
+          ratings:
+            evaluationRatings,
+          bbcode,
+        });
 
-    output +=
-      `[b]Probationary Officer:[/b] ${formData.probationaryOfficer}\n`;
-
-    output +=
-      `[b]Rank:[/b] ${formData.rank}\n`;
-
-    output +=
-      `[b]Badge Number:[/b] ${
-        formData.badgeNumber ||
-        "N/A"
-      }\n`;
-
-    output +=
-      `[b]Work Number:[/b] ${
-        formData.workNumber ||
-        "N/A"
-      }\n\n`;
-
-    output +=
-      `[b]Field Training Officer:[/b] ${formData.fieldTrainingOfficer}\n\n`;
-
-    output +=
-      `[b]Patrol Number:[/b] ${formData.patrolNumber}\n`;
-
-    output +=
-      `[b]Date:[/b] ${formatDateForBBCode(
-        formData.date
-      )}\n`;
-
-    output +=
-      `[b]Time:[/b] ${formData.startTime} - ${formData.endTime} UTC\n`;
-
-    output +=
-      `[b]Duration:[/b] ${formData.duration}\n\n`;
-
-    output +=
-      `[b]Incidents / Tasks Completed[/b]\n`;
-
-    output +=
-      `${formData.incidentsTasks}\n\n`;
-
-    output +=
-      `[b]Evaluation[/b]\n\n`;
-
-    evaluationCategories.forEach(
-      (category) => {
-        output +=
-          `${category.section} - ${category.label}: `;
-
-        output +=
-          evaluationRatings[
-            category.id
-          ];
-
-        output += "\n";
+      if (error) {
+        throw error;
       }
-    );
 
-    output += "\n";
+      const savedPatrolNumber =
+        formData.patrolNumber;
 
-    output +=
-      `[b]Below Standard[/b]\n`;
+      setGeneratedBBCode(
+        bbcode
+      );
 
-    output +=
-      `${
-        formData.belowStandard ||
-        "None"
-      }\n\n`;
+      setSuccessMessage(
+        `DOR Patrol ${savedPatrolNumber} saved successfully. The form has been cleared and the BBCode is ready to copy below.`
+      );
 
-    output +=
-      `[b]Above Standard[/b]\n`;
+      setSelectedTrainee("");
 
-    output +=
-      `${
-        formData.aboveStandard ||
-        "None"
-      }\n\n`;
+      setFormData(
+        (current) => ({
+          ...initialFormData,
+          fieldTrainingOfficer:
+            current.fieldTrainingOfficer,
+          ftoBadgeNumber:
+            current.ftoBadgeNumber,
+        })
+      );
 
-    output +=
-      `[b]Learning Goals[/b]\n`;
+      setEvaluationRatings(
+        createInitialRatings()
+      );
 
-    output +=
-      `${
-        formData.learningGoals ||
-        "None"
-      }\n\n`;
+      setCopied(false);
 
-    output +=
-      `[b]Roleplay Remarks[/b]\n`;
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (error: any) {
+      console.error(
+        "SAVE DOR ERROR",
+        error
+      );
 
-    output +=
-      `${
-        formData.roleplayRemarks ||
-        "None"
-      }\n`;
+      if (
+        error?.code === "23505"
+      ) {
+        setFormError(
+          `Patrol ${formData.patrolNumber} already exists for this trainee.`
+        );
+      } else {
+        setFormError(
+          error?.message ??
+          "The DOR could not be saved."
+        );
+      }
 
-    setGeneratedBBCode(output);
+      setGeneratedBBCode("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function copyBBCode() {
@@ -780,9 +811,10 @@ export default function DORForm({
     setFormData(
       (current) => ({
         ...initialFormData,
-
         fieldTrainingOfficer:
           current.fieldTrainingOfficer,
+        ftoBadgeNumber:
+          current.ftoBadgeNumber,
       })
     );
 
@@ -792,6 +824,7 @@ export default function DORForm({
 
     setGeneratedBBCode("");
     setFormError("");
+    setSuccessMessage("");
     setCopied(false);
   }
 
@@ -799,7 +832,7 @@ export default function DORForm({
     event: FormEvent
   ) {
     event.preventDefault();
-    generateBBCode();
+    void saveDOR();
   }
 
   const completedRatings =
@@ -819,9 +852,9 @@ export default function DORForm({
         </h2>
 
         <p style={subTextStyle}>
-          Complete the report and
-          generate the formatted
-          BBCode.
+          Complete, save and
+          generate the official
+          forum BBCode.
         </p>
       </div>
 
@@ -854,10 +887,11 @@ export default function DORForm({
               selectedTrainee
             }
             onChange={(event) =>
-              selectTrainee(
+              void selectTrainee(
                 event.target.value
               )
             }
+            disabled={saving}
             style={{
               ...inputStyle,
               marginBottom:
@@ -871,12 +905,8 @@ export default function DORForm({
             {trainees.map(
               (trainee) => (
                 <option
-                  key={
-                    trainee.id
-                  }
-                  value={
-                    trainee.id
-                  }
+                  key={trainee.id}
+                  value={trainee.id}
                 >
                   {trainee.name}
                 </option>
@@ -969,12 +999,36 @@ export default function DORForm({
                   event.target.value
                 )
               }
+              disabled={
+                saving ||
+                loadingFTO
+              }
               placeholder={
                 loadingFTO
                   ? "Loading your profile..."
                   : "Enter FTO name"
               }
               style={inputStyle}
+            />
+          </div>
+
+          <div
+            style={{
+              marginTop: "18px",
+            }}
+          >
+            <label style={labelStyle}>
+              FTO Badge / Serial Number
+            </label>
+
+            <input
+              value={
+                formData.ftoBadgeNumber
+              }
+              readOnly
+              style={
+                readOnlyInputStyle
+              }
             />
           </div>
         </div>
@@ -999,7 +1053,12 @@ export default function DORForm({
               onClick={
                 useCurrentUTCDateAndTime
               }
-              style={smallButtonStyle}
+              disabled={saving}
+              style={{
+                ...smallButtonStyle,
+                opacity:
+                  saving ? 0.65 : 1,
+              }}
             >
               Use Current UTC Date
               &amp; Time
@@ -1030,7 +1089,15 @@ export default function DORForm({
                     event.target.value
                   )
                 }
-                placeholder="e.g. 1, 2 or 90"
+                disabled={
+                  saving ||
+                  loadingPatrolNumber
+                }
+                placeholder={
+                  loadingPatrolNumber
+                    ? "Loading..."
+                    : "Next patrol number"
+                }
                 style={inputStyle}
               />
             </div>
@@ -1051,6 +1118,7 @@ export default function DORForm({
                     event.target.value
                   )
                 }
+                disabled={saving}
                 style={inputStyle}
               />
             </div>
@@ -1071,6 +1139,7 @@ export default function DORForm({
                     event.target.value
                   )
                 }
+                disabled={saving}
                 style={inputStyle}
               />
             </div>
@@ -1091,6 +1160,7 @@ export default function DORForm({
                     event.target.value
                   )
                 }
+                disabled={saving}
                 style={inputStyle}
               />
             </div>
@@ -1123,12 +1193,6 @@ export default function DORForm({
             Incidents / Tasks
           </h3>
 
-          <label style={labelStyle}>
-            Incidents and tasks
-            completed during the
-            patrol
-          </label>
-
           <textarea
             value={
               formData.incidentsTasks
@@ -1139,6 +1203,7 @@ export default function DORForm({
                 event.target.value
               )
             }
+            disabled={saving}
             placeholder="Describe incidents attended, tasks completed and notable activity."
             style={textareaStyle}
           />
@@ -1178,9 +1243,7 @@ export default function DORForm({
               index
             ) => (
               <div
-                key={
-                  category.id
-                }
+                key={category.id}
                 style={{
                   display:
                     "flex",
@@ -1236,9 +1299,10 @@ export default function DORForm({
                     updateRating(
                       category.id,
                       event.target
-                        .value as Rating
+                        .value as DORRating
                     )
                   }
+                  disabled={saving}
                   style={{
                     ...inputStyle,
                     width:
@@ -1253,16 +1317,10 @@ export default function DORForm({
                   {ratings.map(
                     (rating) => (
                       <option
-                        key={
-                          rating
-                        }
-                        value={
-                          rating
-                        }
+                        key={rating}
+                        value={rating}
                       >
-                        {
-                          rating
-                        }
+                        {rating}
                       </option>
                     )
                   )}
@@ -1292,14 +1350,11 @@ export default function DORForm({
                 event.target.value
               )
             }
+            disabled={saving}
             style={textareaStyle}
           />
 
-          <label
-            style={
-              spacedLabelStyle
-            }
-          >
+          <label style={spacedLabelStyle}>
             Above Standard
           </label>
 
@@ -1314,14 +1369,11 @@ export default function DORForm({
                 event.target.value
               )
             }
+            disabled={saving}
             style={textareaStyle}
           />
 
-          <label
-            style={
-              spacedLabelStyle
-            }
-          >
+          <label style={spacedLabelStyle}>
             Learning Goals
           </label>
 
@@ -1336,19 +1388,16 @@ export default function DORForm({
                 event.target.value
               )
             }
+            disabled={saving}
             style={textareaStyle}
           />
 
-          <label
-            style={
-              spacedLabelStyle
-            }
-          >
+          <label style={spacedLabelStyle}>
             Roleplay Remarks
           </label>
 
           <textarea
-            placeholder="Enter any roleplay remarks, or leave blank for None."
+            placeholder="Enter roleplay remarks without the OOC tags."
             value={
               formData.roleplayRemarks
             }
@@ -1358,6 +1407,7 @@ export default function DORForm({
                 event.target.value
               )
             }
+            disabled={saving}
             style={textareaStyle}
           />
         </div>
@@ -1372,24 +1422,42 @@ export default function DORForm({
           </div>
         )}
 
+        {successMessage && (
+          <div style={successBoxStyle}>
+            {successMessage}
+          </div>
+        )}
+
         <div style={buttonRowStyle}>
           <button
             type="button"
             onClick={clearForm}
-            style={
-              secondaryButtonStyle
-            }
+            disabled={saving}
+            style={{
+              ...secondaryButtonStyle,
+              opacity:
+                saving ? 0.65 : 1,
+            }}
           >
             Clear Form
           </button>
 
           <button
             type="submit"
-            style={
-              primaryButtonStyle
-            }
+            disabled={saving}
+            style={{
+              ...primaryButtonStyle,
+              opacity:
+                saving ? 0.7 : 1,
+              cursor:
+                saving
+                  ? "not-allowed"
+                  : "pointer",
+            }}
           >
-            Generate DOR BBCode
+            {saving
+              ? "Saving DOR..."
+              : "Save DOR & Generate BBCode"}
           </button>
         </div>
       </form>
@@ -1439,7 +1507,7 @@ export default function DORForm({
             style={{
               ...textareaStyle,
               height:
-                "350px",
+                "500px",
               marginTop:
                 "18px",
               fontFamily:
@@ -1531,12 +1599,25 @@ const errorStyle = {
 };
 
 const validationBoxStyle = {
-  padding: "14px",
+  padding: "16px",
   color: "#fecaca",
   backgroundColor:
     "rgba(127, 29, 29, 0.35)",
   border:
     "1px solid #991b1b",
+  borderRadius: "8px",
+  lineHeight: 1.6,
+  whiteSpace:
+    "pre-line" as const,
+};
+
+const successBoxStyle = {
+  padding: "14px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  border:
+    "1px solid #166534",
   borderRadius: "8px",
 };
 
@@ -1575,7 +1656,6 @@ const primaryButtonStyle = {
   color: "white",
   border: "none",
   borderRadius: "8px",
-  cursor: "pointer",
   fontSize: "16px",
   fontWeight: 600,
 };

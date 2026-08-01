@@ -1,1278 +1,1411 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
 import Image from "next/image";
 import { supabase } from "../lib/supabase";
 
+type Props = {
+  user: any;
+  traineeId?: string;
+};
+
+type NotebookItem = {
+  id: string;
+  trainee_id: string;
+  section: string;
+  item_label: string;
+  completed: boolean;
+};
+
+type DORRecord = {
+  id: string;
+  trainee_id: string;
+  fto_id: string;
+  patrol_number: number;
+  patrol_date: string;
+  start_time: string;
+  end_time: string;
+  duration: string;
+  incidents: string;
+  below_standard: string | null;
+  above_standard: string | null;
+  learning_goals: string | null;
+  roleplay_remarks: string | null;
+  ratings: Record<string, string> | null;
+  bbcode: string;
+  created_at: string;
+  ftoName: string;
+};
+
+const evaluationLabels: Record<string, string> = {
+  "1": "General Appearance",
+  "2": "Attitude towards the Job and Feedback",
+  "3": "Department Policies/Procedures",
+  "4": "Law, Penal Code, Search and Seizure",
+  "5": "Driving Skill: General",
+  "6": "Driving Skill: Orientation and Response Time to Calls",
+  "7": "Report Writing: Accuracy/Grammar/Organisation",
+  "8": "Field Performance",
+  "9": "Self-Initiated Field Activities",
+  "10": "Field Activities: Traffic Stop",
+  "11": "Field Activities: Arrest Procedure",
+  "12": "Officer Safety Principles",
+  "13": "Control of Conflict: Voice Command/Physical Skill",
+  "14": "Use of Common Sense and Good Judgement",
+  "15": "Radio/MDC: Use of Mobile Data Computer",
+  "16": "Radio: Articulation of Transmissions",
+  "17": "With Citizens/Employees in General",
+};
 
 export default function MyNotebook({
+  user,
+  traineeId,
+}: Props) {
+  const [
+    items,
+    setItems,
+  ] = useState<NotebookItem[]>([]);
 
-user,
+  const [
+    trainee,
+    setTrainee,
+  ] = useState<any>(null);
 
-traineeId
+  const [
+    profile,
+    setProfile,
+  ] = useState<any>(null);
 
-}:{
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-user:any;
+  const [
+    loadError,
+    setLoadError,
+  ] = useState("");
 
-traineeId?:string;
+  const [
+    openSections,
+    setOpenSections,
+  ] = useState<
+    Record<string, boolean>
+  >({});
 
-}){
+  const [
+    dors,
+    setDors,
+  ] = useState<DORRecord[]>([]);
 
+  const [
+    selectedDOR,
+    setSelectedDOR,
+  ] = useState<DORRecord | null>(null);
 
-const [items,setItems] =
-useState<any[]>([]);
+  const [
+    loadingDORs,
+    setLoadingDORs,
+  ] = useState(false);
 
+  const [
+    dorError,
+    setDorError,
+  ] = useState("");
 
-const [trainee,setTrainee] =
-useState<any>(null);
+  const [
+    copied,
+    setCopied,
+  ] = useState(false);
 
+  useEffect(() => {
+    loadNotebook();
+  }, [traineeId]);
 
-const [profile,setProfile] =
-useState<any>(null);
+  async function loadNotebook() {
+    setLoading(true);
+    setLoadError("");
 
+    let traineeData: any = null;
+    let traineeError: any = null;
 
-const [loading,setLoading] =
-useState(true);
+    if (traineeId) {
+      const result =
+        await supabase
+          .from("trainees")
+          .select("*")
+          .eq(
+            "id",
+            traineeId
+          )
+          .single();
 
+      traineeData =
+        result.data;
 
-const [openSections,setOpenSections] =
-useState<any>({});
+      traineeError =
+        result.error;
+    } else {
+      const result =
+        await supabase
+          .from("trainees")
+          .select("*")
+          .eq(
+            "profile_id",
+            user.id
+          )
+          .single();
 
+      traineeData =
+        result.data;
 
+      traineeError =
+        result.error;
+    }
 
+    if (
+      traineeError ||
+      !traineeData
+    ) {
+      console.error(
+        "NOTEBOOK LOAD ERROR",
+        traineeError
+      );
 
+      setLoadError(
+        traineeError?.message ??
+          "The FTP notebook could not be loaded."
+      );
 
+      setLoading(false);
 
-useEffect(()=>{
+      return;
+    }
 
-loadNotebook();
+    setTrainee(
+      traineeData
+    );
 
-},[traineeId]);
+    const {
+      data: profileData,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        traineeData.profile_id
+      )
+      .single();
 
+    if (profileError) {
+      console.error(
+        "PROFILE LOAD ERROR",
+        profileError
+      );
+    }
 
+    setProfile(
+      profileData
+    );
 
+    const {
+      data: itemData,
+      error: itemError,
+    } = await supabase
+      .from("notebook_items")
+      .select("*")
+      .eq(
+        "trainee_id",
+        traineeData.id
+      )
+      .order(
+        "section"
+      );
 
+    if (itemError) {
+      console.error(
+        "ITEM LOAD ERROR",
+        itemError
+      );
 
+      setLoadError(
+        itemError.message
+      );
+    }
 
+    setItems(
+      itemData ?? []
+    );
 
+    await loadDORs(
+      traineeData.id
+    );
 
+    setLoading(false);
+  }
 
-async function loadNotebook(){
+  async function loadDORs(
+    traineeRecordId: string
+  ) {
+    setLoadingDORs(true);
+    setDorError("");
 
+    try {
+      const {
+        data: dorData,
+        error: dorLoadError,
+      } = await supabase
+        .from("dors")
+        .select("*")
+        .eq(
+          "trainee_id",
+          traineeRecordId
+        )
+        .order(
+          "patrol_number",
+          {
+            ascending: false,
+          }
+        );
 
-setLoading(true);
+      if (dorLoadError) {
+        throw dorLoadError;
+      }
 
+      const dorRows =
+        dorData ?? [];
 
+      const ftoIds = [
+        ...new Set(
+          dorRows
+            .map(
+              (dor) =>
+                dor.fto_id
+            )
+            .filter(Boolean)
+        ),
+      ];
 
+      let ftoProfiles: {
+        id: string;
+        name: string | null;
+      }[] = [];
 
+      if (ftoIds.length > 0) {
+        const {
+          data: ftoData,
+          error: ftoLoadError,
+        } = await supabase
+          .from("profiles")
+          .select("id, name")
+          .in(
+            "id",
+            ftoIds
+          );
 
-let traineeData:any = null;
+        if (ftoLoadError) {
+          throw ftoLoadError;
+        }
 
-let traineeError:any = null;
+        ftoProfiles =
+          ftoData ?? [];
+      }
 
+      setDors(
+        dorRows.map(
+          (dor): DORRecord => ({
+            ...dor,
+            ftoName:
+              ftoProfiles.find(
+                (profile) =>
+                  profile.id ===
+                  dor.fto_id
+              )?.name ??
+              "Unknown FTO",
+          })
+        )
+      );
+    } catch (error) {
+      console.error(
+        "DOR HISTORY LOAD ERROR",
+        error
+      );
 
+      setDorError(
+        error instanceof Error
+          ? error.message
+          : "DOR history could not be loaded."
+      );
+    } finally {
+      setLoadingDORs(false);
+    }
+  }
 
+  async function copyBBCode() {
+    if (!selectedDOR) {
+      return;
+    }
 
+    try {
+      await navigator.clipboard.writeText(
+        selectedDOR.bbcode
+      );
 
+      setCopied(true);
 
-// FTO VIEWING SOMEONE ELSE
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (error) {
+      console.error(
+        "COPY DOR BBCODE ERROR",
+        error
+      );
+    }
+  }
 
-if(traineeId){
+  if (loading) {
+    return (
+      <p>
+        Loading FTP Notebook...
+      </p>
+    );
+  }
 
+  if (loadError) {
+    return (
+      <div style={errorBox}>
+        {loadError}
+      </div>
+    );
+  }
 
-const result = await supabase
+  const mandatoryItems =
+    items.filter(
+      (item) =>
+        item.item_label.includes(
+          "(BFA)"
+        ) ||
+        item.item_label.includes(
+          "(EVOC)"
+        )
+    );
 
-.from("trainees")
+  const trainingItems =
+    items.filter(
+      (item) =>
+        !item.item_label.includes(
+          "(BFA)"
+        ) &&
+        !item.item_label.includes(
+          "(EVOC)"
+        )
+    );
 
-.select("*")
+  const completed =
+    trainingItems.filter(
+      (item) =>
+        item.completed
+    ).length;
 
-.eq(
+  const progress =
+    trainingItems.length > 0
+      ? Math.round(
+          (
+            completed /
+            trainingItems.length
+          ) * 100
+        )
+      : 0;
 
-"id",
+  const sections =
+    trainingItems.reduce(
+      (
+        result,
+        item
+      ) => {
+        if (
+          !result[
+            item.section
+          ]
+        ) {
+          result[
+            item.section
+          ] = [];
+        }
 
-traineeId
+        result[
+          item.section
+        ].push(item);
 
-)
+        return result;
+      },
+      {} as Record<
+        string,
+        NotebookItem[]
+      >
+    );
 
-.single();
+  function toggle(
+    section: string
+  ) {
+    setOpenSections(
+      (current) => ({
+        ...current,
+        [section]:
+          !current[
+            section
+          ],
+      })
+    );
+  }
 
+  return (
+    <div>
+      <div style={card}>
+        <div
+          style={headerGrid}
+        >
+          <div>
+            <Image
+              src="/ftp-logo.png"
+              alt="FTP Logo"
+              width={120}
+              height={120}
+            />
+          </div>
 
+          <div>
+            <h1 style={title}>
+              LSPD FIELD TRAINING
+              PROGRAM
+            </h1>
 
-traineeData = result.data;
+            <h2
+              style={subtitle}
+            >
+              Probationary Officer
+              Notebook
+            </h2>
+          </div>
 
-traineeError = result.error;
+          <div />
+        </div>
+      </div>
 
+      <div style={card}>
+        <h2 style={heading}>
+          Officer Details
+        </h2>
 
+        <div style={grid}>
+          <Detail
+            label="Character Name"
+            value={
+              profile?.name ||
+              user.name
+            }
+          />
+
+          <Detail
+            label="Rank"
+            value={
+              profile?.rank ||
+              "Police Officer I"
+            }
+          />
+
+          <Detail
+            label="Badge Number"
+            value={
+              profile?.badge_number ||
+              "Not Assigned"
+            }
+          />
+
+          <Detail
+            label="Work Number"
+            value={
+              profile?.work_number ||
+              "Not Assigned"
+            }
+          />
+
+          <Detail
+            label="Field Training Manager"
+            value={
+              trainee?.assigned_ftm ||
+              "Unassigned"
+            }
+          />
+
+          <Detail
+            label="Status"
+            value={
+              trainee?.status ||
+              "Active"
+            }
+          />
+        </div>
+      </div>
+
+      <div style={card}>
+        <h2 style={heading}>
+          Mandatory Requirements
+        </h2>
+
+        <div
+          style={contentGap}
+        >
+          {mandatoryItems.length ===
+          0 ? (
+            <p style={muted}>
+              No mandatory
+              requirements found.
+            </p>
+          ) : (
+            mandatoryItems.map(
+              (item) => (
+                <div
+                  key={item.id}
+                  style={
+                    mandatoryBox
+                  }
+                >
+                  <span>
+                    {item.completed
+                      ? "✅"
+                      : "⬜"}
+                  </span>
+
+                  <b>
+                    {
+                      item.item_label
+                    }
+                  </b>
+                </div>
+              )
+            )
+          )}
+        </div>
+      </div>
+
+      <div style={card}>
+        <h2 style={heading}>
+          Training Progress
+        </h2>
+
+        <div
+          style={contentGap}
+        >
+          <p
+            style={
+              progressText
+            }
+          >
+            <b>{completed}</b>
+            {" of "}
+            <b>
+              {
+                trainingItems.length
+              }
+            </b>
+            {" completed"}
+          </p>
+
+          <div
+            style={
+              progressBackground
+            }
+          >
+            <div
+              style={{
+                ...progressBar,
+                width:
+                  `${progress}%`,
+              }}
+            />
+          </div>
+
+          <p style={muted}>
+            {progress}% Complete
+          </p>
+        </div>
+      </div>
+
+      <div style={card}>
+        <h2 style={heading}>
+          FTP Notebook
+        </h2>
+
+        <div
+          style={contentGap}
+        >
+          {Object.entries(
+            sections
+          ).map(
+            ([
+              section,
+              sectionItems,
+            ]) => (
+              <div
+                key={
+                  section
+                }
+              >
+                <button
+                  onClick={() =>
+                    toggle(
+                      section
+                    )
+                  }
+                  style={
+                    sectionButton
+                  }
+                >
+                  {openSections[
+                    section
+                  ]
+                    ? "▼"
+                    : "▶"}
+                  {" "}
+                  {section}
+                </button>
+
+                {openSections[
+                  section
+                ] &&
+                  sectionItems.map(
+                    (
+                      item
+                    ) => (
+                      <div
+                        key={
+                          item.id
+                        }
+                        style={
+                          itemBox
+                        }
+                      >
+                        <span>
+                          {item.completed
+                            ? "✅"
+                            : "⬜"}
+                        </span>
+
+                        <div>
+                          <b>
+                            {
+                              item.item_label
+                            }
+                          </b>
+
+                          <p
+                            style={
+                              muted
+                            }
+                          >
+                            {item.completed
+                              ? "Completed"
+                              : "Pending"}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  )}
+              </div>
+            )
+          )}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={sectionHeader}>
+          <div>
+            <h2
+              style={{
+                ...heading,
+                marginBottom: "6px",
+              }}
+            >
+              DOR History
+            </h2>
+
+            <p style={muted}>
+              Saved Daily Observation Reports for this P1 record.
+            </p>
+          </div>
+
+          <span style={countBadge}>
+            {dors.length} DOR
+            {dors.length === 1
+              ? ""
+              : "s"}
+          </span>
+        </div>
+
+        {loadingDORs ? (
+          <p style={muted}>
+            Loading DOR history...
+          </p>
+        ) : dorError ? (
+          <div style={errorBox}>
+            Unable to load DOR history: {dorError}
+          </div>
+        ) : dors.length === 0 ? (
+          <div style={emptyState}>
+            No DORs have been submitted for this trainee yet.
+          </div>
+        ) : (
+          <div style={dorList}>
+            {dors.map(
+              (dor) => (
+                <button
+                  key={dor.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedDOR(
+                      dor
+                    )
+                  }
+                  style={dorCard}
+                >
+                  <div>
+                    <strong>
+                      Patrol{" "}
+                      {
+                        dor.patrol_number
+                      }
+                    </strong>
+
+                    <div style={dorMeta}>
+                      {formatDate(
+                        dor.patrol_date
+                      )}
+                      {" • "}
+                      {dor.ftoName}
+                      {" • "}
+                      {dor.duration}
+                    </div>
+                  </div>
+
+                  <span style={viewLink}>
+                    View full DOR
+                  </span>
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={card}>
+        <h2 style={heading}>
+          Final Evaluation
+        </h2>
+
+        <p>
+          {trainee
+            ?.final_evaluation_completed
+            ? "✅ Final Evaluation Completed"
+            : "⏳ Awaiting Completion"}
+        </p>
+      </div>
+
+      <button
+        onClick={() =>
+          window.print()
+        }
+        style={printButton}
+      >
+        🖨 Print / Export FTP Record
+      </button>
+
+      {selectedDOR && (
+        <div
+          style={modalOverlay}
+          onClick={() =>
+            setSelectedDOR(null)
+          }
+        >
+          <div
+            style={modal}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div style={modalHeader}>
+              <div>
+                <h2
+                  style={{
+                    margin: "0 0 6px",
+                  }}
+                >
+                  DOR Patrol{" "}
+                  {
+                    selectedDOR.patrol_number
+                  }
+                </h2>
+
+                <p
+                  style={{
+                    ...muted,
+                    margin: 0,
+                  }}
+                >
+                  {formatDate(
+                    selectedDOR.patrol_date
+                  )}
+                  {" • "}
+                  {
+                    selectedDOR.ftoName
+                  }
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDOR(null)
+                }
+                style={closeButton}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={modalInfoGrid}>
+              <Detail
+                label="Patrol Number"
+                value={String(
+                  selectedDOR.patrol_number
+                )}
+              />
+
+              <Detail
+                label="Date"
+                value={formatDate(
+                  selectedDOR.patrol_date
+                )}
+              />
+
+              <Detail
+                label="Start Time"
+                value={
+                  selectedDOR.start_time
+                }
+              />
+
+              <Detail
+                label="End Time"
+                value={
+                  selectedDOR.end_time
+                }
+              />
+
+              <Detail
+                label="Duration"
+                value={
+                  selectedDOR.duration
+                }
+              />
+
+              <Detail
+                label="FTO"
+                value={
+                  selectedDOR.ftoName
+                }
+              />
+            </div>
+
+            <ReportSection
+              title="Incidents / Tasks"
+              value={
+                selectedDOR.incidents
+              }
+            />
+
+            <ReportSection
+              title="Below Standard Performance"
+              value={
+                selectedDOR.below_standard ||
+                "None"
+              }
+            />
+
+            <ReportSection
+              title="Above Standard Performance"
+              value={
+                selectedDOR.above_standard ||
+                "None"
+              }
+            />
+
+            <ReportSection
+              title="Learning Goals"
+              value={
+                selectedDOR.learning_goals ||
+                "None"
+              }
+            />
+
+            <ReportSection
+              title="Roleplay Remarks"
+              value={
+                selectedDOR.roleplay_remarks ||
+                "None"
+              }
+            />
+
+            <div style={reportSection}>
+              <h3>
+                Evaluation Ratings
+              </h3>
+
+              <div style={ratingGrid}>
+                {Object.entries(
+                  selectedDOR.ratings ??
+                    {}
+                )
+                  .sort(
+                    ([first], [second]) =>
+                      Number(first) -
+                      Number(second)
+                  )
+                  .map(
+                    ([
+                      category,
+                      rating,
+                    ]) => (
+                      <div
+                        key={category}
+                        style={ratingItem}
+                      >
+                        <strong>
+                          {category}.{" "}
+                          {
+                            evaluationLabels[
+                              category
+                            ]
+                          }
+                        </strong>
+
+                        <span style={ratingBadge}>
+                          {rating}
+                        </span>
+                      </div>
+                    )
+                  )}
+              </div>
+            </div>
+
+            <div style={modalButtons}>
+              <button
+                type="button"
+                onClick={copyBBCode}
+                style={copyButton}
+              >
+                {copied
+                  ? "Copied!"
+                  : "Copy BBCode"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDOR(null)
+                }
+                style={closeModalButton}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-else{
+function formatDate(
+  date: string
+) {
+  if (!date) {
+    return "Unknown date";
+  }
 
+  const [year, month, day] =
+    date.split("-");
 
-// P1 VIEWING OWN NOTEBOOK
-
-const result = await supabase
-
-.from("trainees")
-
-.select("*")
-
-.eq(
-
-"profile_id",
-
-user.id
-
-)
-
-.single();
-
-
-
-traineeData = result.data;
-
-traineeError = result.error;
-
-
+  return `${day}/${month}/${year}`;
 }
 
+function ReportSection({
+  title,
+  value,
+}: {
+  title: string;
+  value: string;
+}) {
+  return (
+    <div style={reportSection}>
+      <h3>{title}</h3>
 
-
-
-
-
-
-
-
-if(traineeError || !traineeData){
-
-
-console.error(
-
-"NOTEBOOK LOAD ERROR",
-
-traineeError
-
-);
-
-
-setLoading(false);
-
-return;
-
-
+      <p style={reportText}>
+        {value}
+      </p>
+    </div>
+  );
 }
-
-
-
-
-
-
-
-setTrainee(traineeData);
-
-
-
-
-
-
-
-
-
-// LOAD PROFILE DETAILS
-
-const {
-
-data: profileData
-
-}= await supabase
-
-.from("profiles")
-
-.select("*")
-
-.eq(
-
-"id",
-
-traineeData.profile_id
-
-)
-
-.single();
-
-
-
-
-
-setProfile(profileData);
-
-
-
-
-
-
-
-
-
-// LOAD NOTEBOOK ITEMS
-
-const {
-
-data:itemData,
-
-error:itemError
-
-}= await supabase
-
-.from("notebook_items")
-
-.select("*")
-
-.eq(
-
-"trainee_id",
-
-traineeData.id
-
-)
-
-.order(
-
-"section"
-
-);
-
-
-
-
-
-
-if(itemError){
-
-console.error(
-
-"ITEM LOAD ERROR",
-
-itemError
-
-);
-
-}
-
-
-
-
-
-setItems(itemData || []);
-
-
-setLoading(false);
-
-
-
-}
-
-
-
-
-
-
-
-
-
-if(loading){
-
-return (
-
-<p>
-
-Loading FTP Notebook...
-
-</p>
-
-);
-
-}
-
-
-
-
-
-
-
-
-
-const mandatoryItems = items.filter(
-
-(item)=>
-
-item.item_label.includes("(BFA)") ||
-
-item.item_label.includes("(EVOC)")
-
-);
-
-
-
-
-
-
-const trainingItems = items.filter(
-
-(item)=>
-
-!item.item_label.includes("(BFA)") &&
-
-!item.item_label.includes("(EVOC)")
-
-);
-
-
-
-
-
-
-
-
-const completed =
-
-trainingItems.filter(
-
-x=>x.completed
-
-).length;
-
-
-
-
-
-
-
-const progress =
-
-trainingItems.length
-
-?
-
-Math.round(
-
-(completed / trainingItems.length) * 100
-
-)
-
-:
-
-0;
-
-
-
-
-
-
-
-
-const sections =
-
-trainingItems.reduce(
-
-(acc,item)=>{
-
-
-if(!acc[item.section]){
-
-acc[item.section]=[];
-
-}
-
-
-acc[item.section].push(item);
-
-
-return acc;
-
-
-},{}
-
-);
-
-
-
-
-
-
-
-
-function toggle(section:string){
-
-
-setOpenSections({
-
-...openSections,
-
-[section]:
-
-!openSections[section]
-
-});
-
-
-}
-
-
-
-
-
-
-
-
-
-return (
-
-<div>
-
-
-
-
-
-<div style={card}>
-
-
-<div style={headerGrid}>
-
-
-<div>
-
-<Image
-
-src="/ftp-logo.png"
-
-alt="FTP Logo"
-
-width={120}
-
-height={120}
-
-/>
-
-</div>
-
-
-
-
-
-<div>
-
-
-<h1 style={title}>
-
-LSPD FIELD TRAINING PROGRAM
-
-</h1>
-
-
-
-<h2 style={subtitle}>
-
-Probationary Officer Notebook
-
-</h2>
-
-
-</div>
-
-
-
-
-<div/>
-
-
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style={card}>
-
-
-<h2 style={heading}>
-
-Officer Details
-
-</h2>
-
-
-
-
-<div style={grid}>
-
-
-<Detail
-
-label="Character Name"
-
-value={profile?.name || user.name}
-
-/>
-
-
-
-<Detail
-
-label="Rank"
-
-value={profile?.rank || "Police Officer I"}
-
-/>
-
-
-
-<Detail
-
-label="Badge Number"
-
-value={profile?.badge_number || "Not Assigned"}
-
-/>
-
-
-
-<Detail
-
-label="Work Number"
-
-value={profile?.work_number || "Not Assigned"}
-
-/>
-
-
-
-<Detail
-
-label="Field Training Manager"
-
-value={trainee?.assigned_ftm || "Unassigned"}
-
-/>
-
-
-
-<Detail
-
-label="Status"
-
-value={trainee?.status || "Active"}
-
-/>
-
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style={card}>
-
-
-<h2 style={heading}>
-
-Mandatory Requirements
-
-</h2>
-
-
-
-
-<div style={contentGap}>
-
-
-{
-
-mandatoryItems.length === 0
-
-?
-
-<p style={muted}>
-
-No mandatory requirements found.
-
-</p>
-
-
-:
-
-mandatoryItems.map(item=>(
-
-
-<div
-
-key={item.id}
-
-style={mandatoryBox}
-
->
-
-
-<span>
-
-{item.completed ? "✅":"⬜"}
-
-</span>
-
-
-<b>
-
-{item.item_label}
-
-</b>
-
-
-</div>
-
-
-))
-
-
-}
-
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style={card}>
-
-
-<h2 style={heading}>
-
-Training Progress
-
-</h2>
-
-
-
-
-
-<div style={contentGap}>
-
-
-<p>
-
-<b>{completed}</b>
-
-of
-
-<b>
-
-{" "}{trainingItems.length}
-
-</b>
-
-completed
-
-</p>
-
-
-
-
-
-<div style={progressBackground}>
-
-
-<div
-
-style={{
-
-...progressBar,
-
-width:`${progress}%`
-
-}}
-
-/>
-
-
-</div>
-
-
-
-
-
-<p style={muted}>
-
-{progress}% Complete
-
-</p>
-
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style={card}>
-
-
-<h2 style={heading}>
-
-FTP Notebook
-
-</h2>
-
-
-
-
-
-<div style={contentGap}>
-
-
-{
-
-Object.entries(sections).map(
-
-([section,sectionItems]:any)=>(
-
-
-
-<div key={section}>
-
-
-<button
-
-onClick={()=>toggle(section)}
-
-style={sectionButton}
-
->
-
-
-{openSections[section] ? "▼":"▶"}
-
-{" "}
-
-{section}
-
-
-</button>
-
-
-
-
-
-
-
-{
-
-openSections[section] &&
-
-
-sectionItems.map((item:any)=>(
-
-
-<div
-
-key={item.id}
-
-style={itemBox}
-
->
-
-
-<span>
-
-{item.completed ? "✅":"⬜"}
-
-</span>
-
-
-
-<div>
-
-
-<b>
-
-{item.item_label}
-
-</b>
-
-
-
-
-<p style={muted}>
-
-{item.completed ? "Completed":"Pending"}
-
-</p>
-
-
-
-</div>
-
-
-</div>
-
-
-))
-
-
-}
-
-
-
-</div>
-
-
-)
-
-
-)
-
-
-}
-
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style={card}>
-
-
-<h2 style={heading}>
-
-Final Evaluation
-
-</h2>
-
-
-
-
-<p>
-
-{
-
-trainee?.final_evaluation_completed
-
-?
-
-"✅ Final Evaluation Completed"
-
-:
-
-"⏳ Awaiting Completion"
-
-}
-
-</p>
-
-
-</div>
-
-
-
-
-
-
-
-<button
-
-onClick={()=>window.print()}
-
-style={printButton}
-
->
-
-🖨 Print / Export FTP Record
-
-</button>
-
-
-
-
-
-
-
-</div>
-
-);
-
-
-}
-
-
-
-
-
-
-
-
 
 function Detail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={detailBox}>
+      <p style={labelStyle}>
+        {label}
+      </p>
 
-label,
-
-value
-
-}:{
-
-label:string;
-
-value:string;
-
-}){
-
-
-return (
-
-<div style={detailBox}>
-
-
-<p style={labelStyle}>
-
-{label}
-
-</p>
-
-
-<p style={valueStyle}>
-
-{value}
-
-</p>
-
-
-</div>
-
-);
-
+      <p style={valueStyle}>
+        {value}
+      </p>
+    </div>
+  );
 }
 
-
-
-
-
-
-
-
-
-const card={
-
-background:"#1e293b",
-
-padding:"32px",
-
-borderRadius:"12px",
-
-marginBottom:"24px"
-
+const card = {
+  background: "#1e293b",
+  padding: "32px",
+  borderRadius: "12px",
+  marginBottom: "24px",
 };
 
-
-
-
-
-const headerGrid={
-
-display:"grid",
-
-gridTemplateColumns:"120px 1fr 120px",
-
-alignItems:"center",
-
-textAlign:"center" as const
-
+const headerGrid = {
+  display: "grid",
+  gridTemplateColumns:
+    "120px 1fr 120px",
+  alignItems: "center",
+  textAlign:
+    "center" as const,
 };
 
-
-
-
-
-const title={
-
-fontWeight:"900",
-
-fontSize:"28px",
-
-margin:0
-
+const title = {
+  fontWeight: "900",
+  fontSize: "28px",
+  margin: 0,
 };
 
-
-
-
-
-const subtitle={
-
-fontWeight:"700",
-
-color:"#94a3b8",
-
-marginTop:"8px"
-
+const subtitle = {
+  fontWeight: "700",
+  color: "#94a3b8",
+  marginTop: "8px",
 };
 
-
-
-
-
-const heading={
-
-fontWeight:"900",
-
-fontSize:"22px",
-
-marginBottom:"25px",
-
-marginTop:0
-
+const heading = {
+  fontWeight: "900",
+  fontSize: "22px",
+  marginBottom: "25px",
+  marginTop: 0,
 };
 
-
-
-
-
-const contentGap={
-
-display:"flex",
-
-flexDirection:"column" as const,
-
-gap:"14px"
-
+const contentGap = {
+  display: "flex",
+  flexDirection:
+    "column" as const,
+  gap: "14px",
 };
 
-
-
-
-
-const grid={
-
-display:"grid",
-
-gridTemplateColumns:"1fr 1fr",
-
-columnGap:"80px",
-
-rowGap:"25px"
-
+const grid = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  columnGap: "80px",
+  rowGap: "25px",
 };
 
-
-
-
-
-const detailBox={
-
-display:"flex",
-
-flexDirection:"column" as const,
-
-gap:"8px"
-
+const detailBox = {
+  display: "flex",
+  flexDirection:
+    "column" as const,
+  gap: "8px",
 };
 
-
-
-
-
-const labelStyle={
-
-fontWeight:"700",
-
-color:"#cbd5e1",
-
-margin:0
-
+const labelStyle = {
+  fontWeight: "700",
+  color: "#cbd5e1",
+  margin: 0,
 };
 
-
-
-
-
-const valueStyle={
-
-margin:0,
-
-fontSize:"17px"
-
+const valueStyle = {
+  margin: 0,
+  fontSize: "17px",
 };
 
-
-
-
-
-const muted={
-
-color:"#94a3b8",
-
-fontSize:"14px",
-
-margin:0
-
+const muted = {
+  color: "#94a3b8",
+  fontSize: "14px",
+  margin: 0,
 };
 
-
-
-
-
-const mandatoryBox={
-
-display:"flex",
-
-gap:"12px",
-
-alignItems:"center",
-
-background:"#0f172a",
-
-padding:"14px",
-
-borderRadius:"8px"
-
+const progressText = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap" as const,
+  gap: "4px",
+  margin: 0,
 };
 
-
-
-
-
-const progressBackground={
-
-height:"14px",
-
-background:"#0f172a",
-
-borderRadius:"20px",
-
-overflow:"hidden"
-
+const mandatoryBox = {
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
+  background: "#0f172a",
+  padding: "14px",
+  borderRadius: "8px",
 };
 
-
-
-
-
-const progressBar={
-
-height:"100%",
-
-background:"#2563eb"
-
+const progressBackground = {
+  height: "14px",
+  background: "#0f172a",
+  borderRadius: "20px",
+  overflow: "hidden",
 };
 
-
-
-
-
-const sectionButton={
-
-width:"100%",
-
-padding:"16px",
-
-background:"#0f172a",
-
-color:"white",
-
-border:"none",
-
-borderRadius:"8px",
-
-textAlign:"left" as const,
-
-fontWeight:"800",
-
-cursor:"pointer"
-
+const progressBar = {
+  height: "100%",
+  background: "#2563eb",
 };
 
-
-
-
-
-const itemBox={
-
-display:"flex",
-
-gap:"15px",
-
-alignItems:"center",
-
-padding:"14px",
-
-marginTop:"10px",
-
-background:"#111827",
-
-borderRadius:"8px"
-
+const sectionButton = {
+  width: "100%",
+  padding: "16px",
+  background: "#0f172a",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  textAlign:
+    "left" as const,
+  fontWeight: "800",
+  cursor: "pointer",
 };
 
+const itemBox = {
+  display: "flex",
+  gap: "15px",
+  alignItems: "center",
+  padding: "14px",
+  marginTop: "10px",
+  background: "#111827",
+  borderRadius: "8px",
+};
 
+const printButton = {
+  padding: "14px 25px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "16px",
+};
 
+const errorBox = {
+  padding: "14px",
+  color: "#fecaca",
+  background:
+    "rgba(127, 29, 29, 0.35)",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
+};
 
+const sectionHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "18px",
+  marginBottom: "20px",
+  flexWrap: "wrap" as const,
+};
 
-const printButton={
+const countBadge = {
+  padding: "6px 10px",
+  color: "#bfdbfe",
+  background:
+    "rgba(37, 99, 235, 0.18)",
+  border: "1px solid #2563eb",
+  borderRadius: "999px",
+  fontSize: "13px",
+  fontWeight: 700,
+};
 
-padding:"14px 25px",
+const dorList = {
+  display: "grid",
+  gap: "10px",
+};
 
-background:"#2563eb",
+const dorCard = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "20px",
+  padding: "15px",
+  color: "white",
+  textAlign: "left" as const,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+  cursor: "pointer",
+};
 
-color:"white",
+const dorMeta = {
+  marginTop: "6px",
+  color: "#94a3b8",
+  fontSize: "13px",
+};
 
-border:"none",
+const viewLink = {
+  color: "#60a5fa",
+  fontWeight: 700,
+  whiteSpace: "nowrap" as const,
+};
 
-borderRadius:"8px",
+const emptyState = {
+  padding: "18px",
+  color: "#94a3b8",
+  background: "#0f172a",
+  borderRadius: "8px",
+};
 
-cursor:"pointer",
+const modalOverlay = {
+  position: "fixed" as const,
+  inset: 0,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  padding: "24px",
+  background:
+    "rgba(2, 6, 23, 0.86)",
+  zIndex: 1000,
+};
 
-fontSize:"16px"
+const modal = {
+  width: "100%",
+  maxWidth: "950px",
+  maxHeight: "90vh",
+  overflowY: "auto" as const,
+  padding: "28px",
+  color: "white",
+  background: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: "14px",
+  boxShadow:
+    "0 24px 60px rgba(0,0,0,0.45)",
+};
 
+const modalHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "20px",
+  marginBottom: "24px",
+};
+
+const closeButton = {
+  padding: "0 8px",
+  color: "white",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "30px",
+  lineHeight: 1,
+};
+
+const modalInfoGrid = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: "16px",
+  padding: "18px",
+  marginBottom: "20px",
+  background: "#0f172a",
+  borderRadius: "10px",
+};
+
+const reportSection = {
+  padding: "18px 0",
+  borderBottom:
+    "1px solid #334155",
+};
+
+const reportText = {
+  marginBottom: 0,
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.6,
+};
+
+const ratingGrid = {
+  display: "grid",
+  gap: "10px",
+};
+
+const ratingItem = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "18px",
+  padding: "12px",
+  background: "#0f172a",
+  borderRadius: "8px",
+};
+
+const ratingBadge = {
+  minWidth: "48px",
+  padding: "6px 9px",
+  textAlign: "center" as const,
+  color: "#bfdbfe",
+  background:
+    "rgba(37, 99, 235, 0.18)",
+  border: "1px solid #2563eb",
+  borderRadius: "7px",
+  fontWeight: 800,
+};
+
+const modalButtons = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "12px",
+  marginTop: "24px",
+  flexWrap: "wrap" as const,
+};
+
+const copyButton = {
+  padding: "10px 16px",
+  background: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const closeModalButton = {
+  padding: "10px 16px",
+  background: "#475569",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 700,
 };
