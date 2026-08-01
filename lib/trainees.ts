@@ -11,12 +11,10 @@ export type NotebookItem = {
   completed: boolean;
 };
 
-
 export type NotebookSection = {
   section: string;
   items: NotebookItem[];
 };
-
 
 
 // ================================
@@ -40,7 +38,10 @@ export async function getTrainees() {
         id,
         name,
         reference,
-        role
+        role,
+        badge_number,
+        work_number,
+        rank
       ),
 
       ftm:profiles!trainees_assigned_ftm_fkey (
@@ -49,29 +50,29 @@ export async function getTrainees() {
       )
     `);
 
-
   if (error) {
 
     console.error(
       "GET TRAINEES ERROR",
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      }
+      JSON.stringify(
+        error,
+        null,
+        2
+      )
     );
 
     throw error;
+
   }
 
+  console.log(
+    "TRAINEES WITH PROFILE DATA:",
+    data
+  );
 
   return data ?? [];
 
 }
-
-
-
 
 
 // ================================
@@ -86,19 +87,15 @@ export async function updateTrainee(
   }
 ) {
 
-
   console.log(
     "UPDATING TRAINEE:",
     traineeId
   );
 
-
   console.log(
     "UPDATE DATA:",
     updates
   );
-
-
 
   const {
     data,
@@ -113,38 +110,29 @@ export async function updateTrainee(
     .select()
     .single();
 
-
-
   if (error) {
 
     console.error(
       "UPDATE TRAINEE ERROR",
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      }
+      JSON.stringify(
+        error,
+        null,
+        2
+      )
     );
 
-
     throw error;
+
   }
-
-
 
   console.log(
     "UPDATED TRAINEE RESULT:",
     data
   );
 
-
   return data;
 
 }
-
-
-
 
 
 // ================================
@@ -156,9 +144,11 @@ export async function updateTraineeProfile(
   updates: {
     name?: string;
     reference?: string;
+    badge_number?: string;
+    work_number?: string;
+    rank?: string;
   }
 ) {
-
 
   const {
     data,
@@ -173,32 +163,24 @@ export async function updateTraineeProfile(
     .select()
     .single();
 
-
-
   if (error) {
 
     console.error(
       "UPDATE PROFILE ERROR",
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      }
+      JSON.stringify(
+        error,
+        null,
+        2
+      )
     );
 
-
     throw error;
+
   }
-
-
 
   return data;
 
 }
-
-
-
 
 
 // ================================
@@ -209,7 +191,6 @@ export async function assignFTM(
   traineeId: string,
   ftmId: string | null
 ) {
-
 
   const {
     data,
@@ -226,25 +207,20 @@ export async function assignFTM(
     .select()
     .single();
 
-
-
   if (error) {
 
     console.error(
       "ASSIGN FTM ERROR",
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      }
+      JSON.stringify(
+        error,
+        null,
+        2
+      )
     );
 
-
     throw error;
+
   }
-
-
 
   return data;
 

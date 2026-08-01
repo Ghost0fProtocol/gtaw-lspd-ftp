@@ -7,35 +7,10 @@ import {
 } from "react";
 
 import { getTrainees } from "../lib/trainees";
+import { supabase } from "../lib/supabase";
 
-
-const cardStyle = {
-  padding: "24px",
-  backgroundColor: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "12px",
-};
-
-
-const inputStyle = {
-  width: "100%",
-  padding: "12px",
-  backgroundColor: "#0f172a",
-  color: "white",
-  border: "1px solid #475569",
-  borderRadius: "8px",
-};
-
-
-const textareaStyle = {
-  width: "100%",
-  minHeight: "120px",
-  padding: "12px",
-  backgroundColor: "#0f172a",
-  color: "white",
-  border: "1px solid #475569",
-  borderRadius: "8px",
-  resize: "vertical" as const,
+type Props = {
+  traineeId?: string;
 };
 
 type Rating =
@@ -46,13 +21,13 @@ type Rating =
   | "N/O"
   | "";
 
-
 type Trainee = {
   id: string;
   name: string;
-  reference: string;
+  rank: string;
+  badgeNumber: string;
+  workNumber: string;
 };
-
 
 type EvaluationCategory = {
   id: number;
@@ -60,30 +35,27 @@ type EvaluationCategory = {
   label: string;
 };
 
-
 type DORFormData = {
   probationaryOfficer: string;
-  probationarySerial: string;
+  badgeNumber: string;
+  rank: string;
+  workNumber: string;
 
   fieldTrainingOfficer: string;
-  ftoSerial: string;
 
   patrolNumber: string;
-
   date: string;
-  time: string;
+  startTime: string;
+  endTime: string;
   duration: string;
 
   incidentsTasks: string;
 
   belowStandard: string;
   aboveStandard: string;
-
   learningGoals: string;
-
   roleplayRemarks: string;
 };
-
 
 const evaluationCategories: EvaluationCategory[] = [
   {
@@ -104,14 +76,12 @@ const evaluationCategories: EvaluationCategory[] = [
   {
     id: 4,
     section: "KNOWLEDGE",
-    label:
-      "Law, Penal Code, Search and Seizure",
+    label: "Law, Penal Code, Search and Seizure",
   },
   {
     id: 5,
     section: "PERFORMANCE",
-    label:
-      "Driving Skill: General",
+    label: "Driving Skill: General",
   },
   {
     id: 6,
@@ -128,32 +98,27 @@ const evaluationCategories: EvaluationCategory[] = [
   {
     id: 8,
     section: "PERFORMANCE",
-    label:
-      "Field Performance",
+    label: "Field Performance",
   },
   {
     id: 9,
     section: "PERFORMANCE",
-    label:
-      "Self-Initiated Field Activities",
+    label: "Self-Initiated Field Activities",
   },
   {
     id: 10,
     section: "PERFORMANCE",
-    label:
-      "Field Activities: Traffic Stop",
+    label: "Field Activities: Traffic Stop",
   },
   {
     id: 11,
     section: "PERFORMANCE",
-    label:
-      "Field Activities: Arrest Procedure",
+    label: "Field Activities: Arrest Procedure",
   },
   {
     id: 12,
     section: "PERFORMANCE",
-    label:
-      "Officer Safety Principles",
+    label: "Officer Safety Principles",
   },
   {
     id: 13,
@@ -164,29 +129,24 @@ const evaluationCategories: EvaluationCategory[] = [
   {
     id: 14,
     section: "PERFORMANCE",
-    label:
-      "Use of Common Sense and Good Judgement",
+    label: "Use of Common Sense and Good Judgement",
   },
   {
     id: 15,
     section: "PERFORMANCE",
-    label:
-      "Radio/MDC: Use of Mobile Data Computer",
+    label: "Radio/MDC: Use of Mobile Data Computer",
   },
   {
     id: 16,
     section: "PERFORMANCE",
-    label:
-      "Radio: Articulation of Transmissions",
+    label: "Radio: Articulation of Transmissions",
   },
   {
     id: 17,
     section: "RELATIONSHIPS",
-    label:
-      "With Citizens/Employees in General",
+    label: "With Citizens/Employees in General",
   },
 ];
-
 
 const ratings: Exclude<Rating, "">[] = [
   "1",
@@ -196,315 +156,674 @@ const ratings: Exclude<Rating, "">[] = [
   "N/O",
 ];
 
-
 const initialFormData: DORFormData = {
   probationaryOfficer: "",
-  probationarySerial: "",
+  badgeNumber: "",
+  rank: "",
+  workNumber: "",
 
   fieldTrainingOfficer: "",
-  ftoSerial: "",
 
   patrolNumber: "",
-
   date: "",
-  time: "",
+  startTime: "",
+  endTime: "",
   duration: "",
 
   incidentsTasks: "",
 
   belowStandard: "",
   aboveStandard: "",
-
   learningGoals: "",
-
   roleplayRemarks: "",
 };
 
-
-function createInitialRatings(): Record<number, Rating> {
+function createInitialRatings() {
   return evaluationCategories.reduce(
-    (ratings, category) => {
-      ratings[category.id] = "";
-      return ratings;
+    (ratingsRecord, category) => {
+      ratingsRecord[category.id] = "";
+      return ratingsRecord;
     },
-    {} as Record<number, Rating>,
+    {} as Record<number, Rating>
   );
 }
 
-
-export default function DORForm() {
-
-  const [trainees, setTrainees] =
-    useState<Trainee[]>([]);
-
-
-  const [formData, setFormData] =
-    useState<DORFormData>(
-      initialFormData,
-    );
-
-
-  const [selectedTrainee, setSelectedTrainee] =
-    useState("");
-
-
-  const [evaluationRatings, setEvaluationRatings] =
-    useState<Record<number, Rating>>(
-      createInitialRatings,
-    );
-
-
-  const [generatedBBCode, setGeneratedBBCode] =
-    useState("");
-
-
-  const [copied, setCopied] =
-    useState(false);
-
-
-  const [errorMessage, setErrorMessage] =
-    useState("");
-
-
-  useEffect(() => {
-
-    async function loadTrainees() {
-
-      const data = await getTrainees();
-
-
-      const formatted: Trainee[] =
-        data.map((trainee: any) => ({
-          id: trainee.id,
-          name:
-            trainee.profile?.name ??
-            trainee.name ??
-            "Unknown",
-
-          reference:
-            trainee.profile?.reference ??
-            trainee.reference ??
-            "N/A",
-        }));
-
-
-      setTrainees(formatted);
-
-    }
-
-
-    loadTrainees();
-
-  }, []);
-    function updateField(
-    field: keyof DORFormData,
-    value: string,
-  ) {
-    setFormData((current) => ({
-      ...current,
-      [field]: value,
-    }));
+function calculateDuration(
+  startTime: string,
+  endTime: string
+) {
+  if (!startTime || !endTime) {
+    return "";
   }
 
+  const [startHour, startMinute] =
+    startTime.split(":").map(Number);
+
+  const [endHour, endMinute] =
+    endTime.split(":").map(Number);
+
+  const startMinutes =
+    startHour * 60 + startMinute;
+
+  let endMinutes =
+    endHour * 60 + endMinute;
+
+  if (endMinutes < startMinutes) {
+    endMinutes += 24 * 60;
+  }
+
+  const difference =
+    endMinutes - startMinutes;
+
+  const hours =
+    Math.floor(difference / 60);
+
+  const minutes =
+    difference % 60;
+
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
+
+function formatDateForBBCode(
+  date: string
+) {
+  if (!date) {
+    return "";
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] = date.split("-");
+
+  return `${day}/${month}/${year}`;
+}
+
+export default function DORForm({
+  traineeId,
+}: Props) {
+  const [
+    trainees,
+    setTrainees,
+  ] = useState<Trainee[]>([]);
+
+  const [
+    selectedTrainee,
+    setSelectedTrainee,
+  ] = useState("");
+
+  const [
+    formData,
+    setFormData,
+  ] = useState<DORFormData>(
+    initialFormData
+  );
+
+  const [
+    evaluationRatings,
+    setEvaluationRatings,
+  ] = useState<Record<number, Rating>>(
+    createInitialRatings
+  );
+
+  const [
+    generatedBBCode,
+    setGeneratedBBCode,
+  ] = useState("");
+
+  const [
+    copied,
+    setCopied,
+  ] = useState(false);
+
+  const [
+    traineeLoadError,
+    setTraineeLoadError,
+  ] = useState("");
+
+  const [
+    formError,
+    setFormError,
+  ] = useState("");
+
+  const [
+    loadingFTO,
+    setLoadingFTO,
+  ] = useState(true);
+
+  useEffect(() => {
+    async function loadTrainees() {
+      try {
+        setTraineeLoadError("");
+
+        const data =
+          await getTrainees();
+
+        const formatted: Trainee[] =
+          data.map(
+            (trainee: any) => ({
+              id: trainee.id,
+
+              name:
+                trainee.profile?.name ??
+                trainee.name ??
+                "Unknown",
+
+              rank:
+                trainee.profile?.rank ??
+                "Police Officer I",
+
+              badgeNumber:
+                trainee.profile
+                  ?.badge_number ??
+                "",
+
+              workNumber:
+                trainee.profile
+                  ?.work_number ??
+                "",
+            })
+          );
+
+        setTrainees(formatted);
+      } catch (error: unknown) {
+        console.error(
+          "GET TRAINEES ERROR",
+          error
+        );
+
+        if (
+          error instanceof Error
+        ) {
+          setTraineeLoadError(
+            error.message
+          );
+        } else {
+          setTraineeLoadError(
+            "Unable to load trainees."
+          );
+        }
+      }
+    }
+
+    loadTrainees();
+  }, []);
+
+  useEffect(() => {
+    async function loadLoggedInFTO() {
+      try {
+        setLoadingFTO(true);
+
+        const {
+          data: userData,
+          error: userError,
+        } =
+          await supabase.auth.getUser();
+
+        if (userError) {
+          throw userError;
+        }
+
+        const user =
+          userData.user;
+
+        if (!user) {
+          return;
+        }
+
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("id", user.id)
+          .single();
+
+        if (profileError) {
+          throw profileError;
+        }
+
+        setFormData(
+          (current) => ({
+            ...current,
+
+            fieldTrainingOfficer:
+              profile?.name ??
+              "",
+          })
+        );
+      } catch (error) {
+        console.error(
+          "LOAD FTO PROFILE ERROR",
+          error
+        );
+      } finally {
+        setLoadingFTO(false);
+      }
+    }
+
+    loadLoggedInFTO();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !traineeId ||
+      trainees.length === 0
+    ) {
+      return;
+    }
+
+    selectTrainee(traineeId);
+  }, [traineeId, trainees]);
+
+  function updateField(
+    field: keyof DORFormData,
+    value: string
+  ) {
+    setFormError("");
+
+    setFormData(
+      (current) => ({
+        ...current,
+        [field]: value,
+      })
+    );
+  }
+
+  function updateTime(
+    field:
+      | "startTime"
+      | "endTime",
+    value: string
+  ) {
+    setFormError("");
+
+    setFormData(
+      (current) => {
+        const updated = {
+          ...current,
+          [field]: value,
+        };
+
+        return {
+          ...updated,
+
+          duration:
+            calculateDuration(
+              updated.startTime,
+              updated.endTime
+            ),
+        };
+      }
+    );
+  }
 
   function updateRating(
     id: number,
-    rating: Rating,
+    rating: Rating
   ) {
-    setEvaluationRatings((current) => ({
-      ...current,
-      [id]: rating,
-    }));
+    setFormError("");
+
+    setEvaluationRatings(
+      (current) => ({
+        ...current,
+        [id]: rating,
+      })
+    );
   }
 
-
   function selectTrainee(
-    traineeId: string,
+    id: string
   ) {
+    setSelectedTrainee(id);
+    setFormError("");
+
+    if (id === "") {
+      setFormData(
+        (current) => ({
+          ...current,
+
+          probationaryOfficer:
+            "",
+
+          badgeNumber: "",
+          rank: "",
+          workNumber: "",
+        })
+      );
+
+      return;
+    }
 
     const trainee =
       trainees.find(
         (item) =>
-          item.id === traineeId,
+          item.id === id
       );
 
+    if (!trainee) {
+      return;
+    }
 
-    if (!trainee) return;
+    setFormData(
+      (current) => ({
+        ...current,
 
+        probationaryOfficer:
+          trainee.name,
 
-    setSelectedTrainee(
-      trainee.id,
+        badgeNumber:
+          trainee.badgeNumber,
+
+        rank:
+          trainee.rank,
+
+        workNumber:
+          trainee.workNumber,
+      })
     );
-
-
-    setFormData((current) => ({
-      ...current,
-
-      probationaryOfficer:
-        trainee.name,
-
-      probationarySerial:
-        trainee.reference,
-    }));
-
   }
 
+  function useCurrentUTCDateAndTime() {
+    const now =
+      new Date();
+
+    const year =
+      now.getUTCFullYear();
+
+    const month =
+      String(
+        now.getUTCMonth() + 1
+      ).padStart(2, "0");
+
+    const day =
+      String(
+        now.getUTCDate()
+      ).padStart(2, "0");
+
+    const hours =
+      String(
+        now.getUTCHours()
+      ).padStart(2, "0");
+
+    const minutes =
+      String(
+        now.getUTCMinutes()
+      ).padStart(2, "0");
+
+    setFormData(
+      (current) => ({
+        ...current,
+
+        date:
+          `${year}-${month}-${day}`,
+
+        startTime:
+          `${hours}:${minutes}`,
+
+        endTime: "",
+        duration: "",
+      })
+    );
+
+    setFormError("");
+  }
+
+  function validateForm() {
+    if (!selectedTrainee) {
+      return "Please select a trainee.";
+    }
+
+    if (
+      !formData.fieldTrainingOfficer
+        .trim()
+    ) {
+      return "Field Training Officer is missing.";
+    }
+
+    if (
+      !formData.patrolNumber.trim()
+    ) {
+      return "Please enter the trainee's FTP patrol number.";
+    }
+
+    if (!formData.date) {
+      return "Please select the patrol date.";
+    }
+
+    if (
+      !formData.startTime ||
+      !formData.endTime
+    ) {
+      return "Please enter the patrol start and end times.";
+    }
+
+    if (
+      !formData.incidentsTasks.trim()
+    ) {
+      return "Please enter the incidents or tasks completed.";
+    }
+
+    const missingRatings =
+      evaluationCategories.filter(
+        (category) =>
+          !evaluationRatings[
+            category.id
+          ]
+      );
+
+    if (
+      missingRatings.length > 0
+    ) {
+      return `Please complete all evaluation ratings. ${missingRatings.length} remaining.`;
+    }
+
+    return "";
+  }
 
   function generateBBCode() {
+    const validationError =
+      validateForm();
 
-    const traineeName =
-      formData.probationaryOfficer ||
-      "Unknown";
+    if (validationError) {
+      setFormError(
+        validationError
+      );
 
+      setGeneratedBBCode("");
+
+      return;
+    }
+
+    setFormError("");
 
     let output = "";
 
     output +=
       `[b]DAILY OBSERVATION REPORT[/b]\n\n`;
 
+    output +=
+      `[b]Probationary Officer:[/b] ${formData.probationaryOfficer}\n`;
 
     output +=
-      `[b]Probationary Officer:[/b] ${traineeName}\n`;
+      `[b]Rank:[/b] ${formData.rank}\n`;
 
     output +=
-      `[b]Serial:[/b] ${formData.probationarySerial}\n`;
+      `[b]Badge Number:[/b] ${
+        formData.badgeNumber ||
+        "N/A"
+      }\n`;
 
     output +=
-      `[b]Field Training Officer:[/b] ${formData.fieldTrainingOfficer}\n`;
+      `[b]Work Number:[/b] ${
+        formData.workNumber ||
+        "N/A"
+      }\n\n`;
 
     output +=
-      `[b]FTO Serial:[/b] ${formData.ftoSerial}\n\n`;
-
+      `[b]Field Training Officer:[/b] ${formData.fieldTrainingOfficer}\n\n`;
 
     output +=
       `[b]Patrol Number:[/b] ${formData.patrolNumber}\n`;
 
     output +=
-      `[b]Date:[/b] ${formData.date}\n`;
+      `[b]Date:[/b] ${formatDateForBBCode(
+        formData.date
+      )}\n`;
 
     output +=
-      `[b]Time:[/b] ${formData.time}\n`;
+      `[b]Time:[/b] ${formData.startTime} - ${formData.endTime} UTC\n`;
 
     output +=
       `[b]Duration:[/b] ${formData.duration}\n\n`;
-
 
     output +=
       `[b]Incidents / Tasks Completed[/b]\n`;
 
     output +=
-      `${formData.incidentsTasks || "N/A"}\n\n`;
-
+      `${formData.incidentsTasks}\n\n`;
 
     output +=
       `[b]Evaluation[/b]\n\n`;
 
-
     evaluationCategories.forEach(
       (category) => {
-
         output +=
           `${category.section} - ${category.label}: `;
-
 
         output +=
           evaluationRatings[
             category.id
-          ] || "N/O";
-
+          ];
 
         output += "\n";
-
-      },
+      }
     );
 
-
     output += "\n";
-
 
     output +=
       `[b]Below Standard[/b]\n`;
 
     output +=
-      `${formData.belowStandard || "None"}\n\n`;
-
+      `${
+        formData.belowStandard ||
+        "None"
+      }\n\n`;
 
     output +=
       `[b]Above Standard[/b]\n`;
 
     output +=
-      `${formData.aboveStandard || "None"}\n\n`;
-
+      `${
+        formData.aboveStandard ||
+        "None"
+      }\n\n`;
 
     output +=
       `[b]Learning Goals[/b]\n`;
 
     output +=
-      `${formData.learningGoals || "None"}\n\n`;
-
+      `${
+        formData.learningGoals ||
+        "None"
+      }\n\n`;
 
     output +=
       `[b]Roleplay Remarks[/b]\n`;
 
     output +=
-      `${formData.roleplayRemarks || "None"}\n`;
-
+      `${
+        formData.roleplayRemarks ||
+        "None"
+      }\n`;
 
     setGeneratedBBCode(output);
-
   }
-
 
   async function copyBBCode() {
+    try {
+      await navigator.clipboard.writeText(
+        generatedBBCode
+      );
 
-    await navigator.clipboard.writeText(
-      generatedBBCode,
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (error) {
+      console.error(
+        "COPY BBCODE ERROR",
+        error
+      );
+
+      setFormError(
+        "The BBCode could not be copied."
+      );
+    }
+  }
+
+  function clearForm() {
+    setSelectedTrainee("");
+
+    setFormData(
+      (current) => ({
+        ...initialFormData,
+
+        fieldTrainingOfficer:
+          current.fieldTrainingOfficer,
+      })
     );
 
+    setEvaluationRatings(
+      createInitialRatings()
+    );
 
-    setCopied(true);
-
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
-
+    setGeneratedBBCode("");
+    setFormError("");
+    setCopied(false);
   }
-
 
   function submitDOR(
-    event: FormEvent,
+    event: FormEvent
   ) {
-
     event.preventDefault();
-
     generateBBCode();
-
   }
-    return (
-    <div>
 
+  const completedRatings =
+    Object.values(
+      evaluationRatings
+    ).filter(Boolean).length;
+
+  return (
+    <div>
       <div
         style={{
           marginBottom: "25px",
         }}
       >
-
         <h2>
           Daily Observation Report
         </h2>
 
-        <p
-          style={{
-            color: "#94a3b8",
-          }}
-        >
-          Create and generate a formatted DOR report.
+        <p style={subTextStyle}>
+          Complete the report and
+          generate the formatted
+          BBCode.
         </p>
-
       </div>
-
-
 
       <form
         onSubmit={submitDOR}
@@ -513,459 +832,780 @@ export default function DORForm() {
           gap: "20px",
         }}
       >
-
-
-        {/* TRAINEE SELECT */}
-
-        <div
-          style={cardStyle}
-        >
-
-          <h3>
-            Trainee Information
+        <div style={cardStyle}>
+          <h3 style={headingStyle}>
+            Officer Information
           </h3>
 
+          {traineeLoadError && (
+            <p style={errorStyle}>
+              Unable to load
+              trainees:{" "}
+              {traineeLoadError}
+            </p>
+          )}
+
+          <label style={labelStyle}>
+            Trainee
+          </label>
 
           <select
-            value={selectedTrainee}
-            onChange={(e) =>
+            value={
+              selectedTrainee
+            }
+            onChange={(event) =>
               selectTrainee(
-                e.target.value,
+                event.target.value
               )
             }
-            style={inputStyle}
+            style={{
+              ...inputStyle,
+              marginBottom:
+                "22px",
+            }}
           >
-
             <option value="">
               Select Trainee
             </option>
 
-
             {trainees.map(
               (trainee) => (
-
                 <option
-                  key={trainee.id}
-                  value={trainee.id}
+                  key={
+                    trainee.id
+                  }
+                  value={
+                    trainee.id
+                  }
                 >
                   {trainee.name}
                 </option>
-
-              ),
+              )
             )}
-
           </select>
 
+          <div style={gridStyle}>
+            <div>
+              <label style={labelStyle}>
+                Officer Name
+              </label>
 
+              <input
+                value={
+                  formData.probationaryOfficer
+                }
+                readOnly
+                style={
+                  readOnlyInputStyle
+                }
+              />
+            </div>
 
-          <input
-            placeholder="Probationary Serial"
-            value={
-              formData.probationarySerial
-            }
-            onChange={(e) =>
-              updateField(
-                "probationarySerial",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+            <div>
+              <label style={labelStyle}>
+                Rank
+              </label>
 
+              <input
+                value={
+                  formData.rank
+                }
+                readOnly
+                style={
+                  readOnlyInputStyle
+                }
+              />
+            </div>
 
-          <input
-            placeholder="Field Training Officer"
-            value={
-              formData.fieldTrainingOfficer
-            }
-            onChange={(e) =>
-              updateField(
-                "fieldTrainingOfficer",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+            <div>
+              <label style={labelStyle}>
+                Badge / Serial Number
+              </label>
 
+              <input
+                value={
+                  formData.badgeNumber
+                }
+                readOnly
+                style={
+                  readOnlyInputStyle
+                }
+              />
+            </div>
 
-          <input
-            placeholder="FTO Serial"
-            value={
-              formData.ftoSerial
-            }
-            onChange={(e) =>
-              updateField(
-                "ftoSerial",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+            <div>
+              <label style={labelStyle}>
+                Work Number
+              </label>
 
+              <input
+                value={
+                  formData.workNumber
+                }
+                readOnly
+                style={
+                  readOnlyInputStyle
+                }
+              />
+            </div>
+          </div>
 
+          <div
+            style={{
+              marginTop: "18px",
+            }}
+          >
+            <label style={labelStyle}>
+              Field Training Officer
+            </label>
+
+            <input
+              value={
+                formData.fieldTrainingOfficer
+              }
+              onChange={(event) =>
+                updateField(
+                  "fieldTrainingOfficer",
+                  event.target.value
+                )
+              }
+              placeholder={
+                loadingFTO
+                  ? "Loading your profile..."
+                  : "Enter FTO name"
+              }
+              style={inputStyle}
+            />
+          </div>
         </div>
 
-
-
-
-
-        {/* PATROL DETAILS */}
-
-        <div
-          style={cardStyle}
-        >
-
-          <h3>
-            Patrol Details
-          </h3>
-
-
-          <input
-            placeholder="Patrol Number"
-            value={
-              formData.patrolNumber
+        <div style={cardStyle}>
+          <div
+            style={
+              sectionHeaderStyle
             }
-            onChange={(e) =>
-              updateField(
-                "patrolNumber",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+          >
+            <h3
+              style={{
+                ...headingStyle,
+                marginBottom: 0,
+              }}
+            >
+              Patrol Details
+            </h3>
 
-          <input
-            placeholder="Date"
-            value={
-              formData.date
-            }
-            onChange={(e) =>
-              updateField(
-                "date",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+            <button
+              type="button"
+              onClick={
+                useCurrentUTCDateAndTime
+              }
+              style={smallButtonStyle}
+            >
+              Use Current UTC Date
+              &amp; Time
+            </button>
+          </div>
 
+          <div
+            style={{
+              ...gridStyle,
+              marginTop: "20px",
+            }}
+          >
+            <div>
+              <label style={labelStyle}>
+                FTP Patrol Number
+              </label>
 
-          <input
-            placeholder="Time"
-            value={
-              formData.time
-            }
-            onChange={(e) =>
-              updateField(
-                "time",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={
+                  formData.patrolNumber
+                }
+                onChange={(event) =>
+                  updateField(
+                    "patrolNumber",
+                    event.target.value
+                  )
+                }
+                placeholder="e.g. 1, 2 or 90"
+                style={inputStyle}
+              />
+            </div>
 
+            <div>
+              <label style={labelStyle}>
+                Date
+              </label>
 
-          <input
-            placeholder="Duration"
-            value={
-              formData.duration
-            }
-            onChange={(e) =>
-              updateField(
-                "duration",
-                e.target.value,
-              )
-            }
-            style={inputStyle}
-          />
+              <input
+                type="date"
+                value={
+                  formData.date
+                }
+                onChange={(event) =>
+                  updateField(
+                    "date",
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </div>
 
+            <div>
+              <label style={labelStyle}>
+                Start Time (UTC)
+              </label>
+
+              <input
+                type="time"
+                value={
+                  formData.startTime
+                }
+                onChange={(event) =>
+                  updateTime(
+                    "startTime",
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                End Time (UTC)
+              </label>
+
+              <input
+                type="time"
+                value={
+                  formData.endTime
+                }
+                onChange={(event) =>
+                  updateTime(
+                    "endTime",
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "18px",
+            }}
+          >
+            <label style={labelStyle}>
+              Calculated Duration
+            </label>
+
+            <input
+              value={
+                formData.duration
+              }
+              readOnly
+              placeholder="Calculated automatically"
+              style={
+                readOnlyInputStyle
+              }
+            />
+          </div>
         </div>
 
-
-
-
-
-        {/* INCIDENTS */}
-
-        <div
-          style={cardStyle}
-        >
-
-          <h3>
+        <div style={cardStyle}>
+          <h3 style={headingStyle}>
             Incidents / Tasks
           </h3>
 
+          <label style={labelStyle}>
+            Incidents and tasks
+            completed during the
+            patrol
+          </label>
 
           <textarea
             value={
               formData.incidentsTasks
             }
-            onChange={(e) =>
+            onChange={(event) =>
               updateField(
                 "incidentsTasks",
-                e.target.value,
+                event.target.value
               )
             }
+            placeholder="Describe incidents attended, tasks completed and notable activity."
             style={textareaStyle}
           />
-
         </div>
 
+        <div style={cardStyle}>
+          <div
+            style={
+              sectionHeaderStyle
+            }
+          >
+            <h3
+              style={{
+                ...headingStyle,
+                marginBottom: 0,
+              }}
+            >
+              Evaluation
+            </h3>
 
+            <span
+              style={
+                ratingCountStyle
+              }
+            >
+              {completedRatings}/
+              {
+                evaluationCategories.length
+              }{" "}
+              completed
+            </span>
+          </div>
 
-
-
-
-        {/* RATINGS */}
-
-        <div
-          style={cardStyle}
-        >
-
-          <h3>
-            Evaluation
-          </h3>
-
-
-          {
-            evaluationCategories.map(
-              (category) => (
-
-                <div
-                  key={category.id}
-                  style={{
-                    display:"flex",
-                    justifyContent:
-                      "space-between",
-                    padding:
-                      "12px 0",
-                    borderBottom:
-                      "1px solid #334155",
-                  }}
-                >
-
-                  <span>
-                    {category.label}
-                  </span>
-
-
-                  <select
-                    value={
-                      evaluationRatings[
-                        category.id
-                      ]
-                    }
-                    onChange={(e) =>
-                      updateRating(
-                        category.id,
-                        e.target.value as Rating,
-                      )
-                    }
+          {evaluationCategories.map(
+            (
+              category,
+              index
+            ) => (
+              <div
+                key={
+                  category.id
+                }
+                style={{
+                  display:
+                    "flex",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "center",
+                  gap: "20px",
+                  padding:
+                    "14px 0",
+                  borderBottom:
+                    index ===
+                    evaluationCategories.length -
+                      1
+                      ? "none"
+                      : "1px solid #334155",
+                }}
+              >
+                <div>
+                  <div
                     style={{
-                      ...inputStyle,
-                      width:"120px",
+                      color:
+                        "#94a3b8",
+                      fontSize:
+                        "12px",
+                      fontWeight:
+                        700,
+                      marginBottom:
+                        "4px",
                     }}
                   >
-
-                    <option value="">
-                      -
-                    </option>
-
-
                     {
-                      ratings.map(
-                        (rating) => (
-
-                          <option
-                            key={rating}
-                            value={rating}
-                          >
-                            {rating}
-                          </option>
-
-                        ),
-                      )
+                      category.section
                     }
+                  </div>
 
-                  </select>
-
-
+                  <span>
+                    {
+                      category.label
+                    }
+                  </span>
                 </div>
 
-              ),
+                <select
+                  value={
+                    evaluationRatings[
+                      category.id
+                    ]
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateRating(
+                      category.id,
+                      event.target
+                        .value as Rating
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    width:
+                      "120px",
+                    flexShrink: 0,
+                  }}
+                >
+                  <option value="">
+                    Select
+                  </option>
+
+                  {ratings.map(
+                    (rating) => (
+                      <option
+                        key={
+                          rating
+                        }
+                        value={
+                          rating
+                        }
+                      >
+                        {
+                          rating
+                        }
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
             )
-          }
-
-
+          )}
         </div>
 
-
-
-
-
-
-
-        {/* COMMENTS */}
-
-        <div
-          style={cardStyle}
-        >
-
-          <h3>
+        <div style={cardStyle}>
+          <h3 style={headingStyle}>
             Feedback
           </h3>
 
+          <label style={labelStyle}>
+            Below Standard
+          </label>
 
           <textarea
-            placeholder="Below Standard"
+            placeholder="Enter any areas below standard, or leave blank for None."
             value={
               formData.belowStandard
             }
-            onChange={(e)=>
+            onChange={(event) =>
               updateField(
                 "belowStandard",
-                e.target.value,
+                event.target.value
               )
             }
             style={textareaStyle}
           />
 
+          <label
+            style={
+              spacedLabelStyle
+            }
+          >
+            Above Standard
+          </label>
 
           <textarea
-            placeholder="Above Standard"
+            placeholder="Enter any areas above standard, or leave blank for None."
             value={
               formData.aboveStandard
             }
-            onChange={(e)=>
+            onChange={(event) =>
               updateField(
                 "aboveStandard",
-                e.target.value,
+                event.target.value
               )
             }
             style={textareaStyle}
           />
 
+          <label
+            style={
+              spacedLabelStyle
+            }
+          >
+            Learning Goals
+          </label>
 
           <textarea
-            placeholder="Learning Goals"
+            placeholder="Enter learning goals for the trainee, or leave blank for None."
             value={
               formData.learningGoals
             }
-            onChange={(e)=>
+            onChange={(event) =>
               updateField(
                 "learningGoals",
-                e.target.value,
+                event.target.value
               )
             }
             style={textareaStyle}
           />
 
+          <label
+            style={
+              spacedLabelStyle
+            }
+          >
+            Roleplay Remarks
+          </label>
 
           <textarea
-            placeholder="Roleplay Remarks"
+            placeholder="Enter any roleplay remarks, or leave blank for None."
             value={
               formData.roleplayRemarks
             }
-            onChange={(e)=>
+            onChange={(event) =>
               updateField(
                 "roleplayRemarks",
-                e.target.value,
+                event.target.value
               )
             }
             style={textareaStyle}
           />
-
         </div>
 
+        {formError && (
+          <div
+            style={
+              validationBoxStyle
+            }
+          >
+            {formError}
+          </div>
+        )}
 
+        <div style={buttonRowStyle}>
+          <button
+            type="button"
+            onClick={clearForm}
+            style={
+              secondaryButtonStyle
+            }
+          >
+            Clear Form
+          </button>
 
-
-
-
-        <button
-          type="submit"
-          style={{
-            padding:"14px",
-            background:"#2563eb",
-            color:"white",
-            border:"none",
-            borderRadius:"8px",
-            cursor:"pointer",
-            fontSize:"16px",
-          }}
-        >
-          Generate DOR BBCode
-        </button>
-
-
+          <button
+            type="submit"
+            style={
+              primaryButtonStyle
+            }
+          >
+            Generate DOR BBCode
+          </button>
+        </div>
       </form>
 
-
-
-
-
-
-      {
-        generatedBBCode && (
-
+      {generatedBBCode && (
+        <div
+          style={{
+            ...cardStyle,
+            marginTop:
+              "25px",
+          }}
+        >
           <div
-            style={{
-              ...cardStyle,
-              marginTop:"25px",
-            }}
+            style={
+              sectionHeaderStyle
+            }
           >
-
-            <div
+            <h3
               style={{
-                display:"flex",
-                justifyContent:
-                  "space-between",
+                ...headingStyle,
+                marginBottom: 0,
               }}
             >
+              Generated BBCode
+            </h3>
 
-              <h3>
-                Generated BBCode
-              </h3>
-
-
-              <button
-                onClick={copyBBCode}
-                style={{
-                  background:"#16a34a",
-                  color:"white",
-                  border:"none",
-                  padding:"8px 14px",
-                  borderRadius:"6px",
-                  cursor:"pointer",
-                }}
-              >
-                {
-                  copied
-                  ? "Copied!"
-                  : "Copy"
-                }
-              </button>
-
-            </div>
-
-
-
-            <textarea
-              value={generatedBBCode}
-              readOnly
-              style={{
-                ...textareaStyle,
-                height:"350px",
-                fontFamily:
-                  "monospace",
-              }}
-            />
-
+            <button
+              type="button"
+              onClick={
+                copyBBCode
+              }
+              style={
+                copyButtonStyle
+              }
+            >
+              {copied
+                ? "Copied!"
+                : "Copy BBCode"}
+            </button>
           </div>
 
-        )
-      }
-
-
+          <textarea
+            value={
+              generatedBBCode
+            }
+            readOnly
+            style={{
+              ...textareaStyle,
+              height:
+                "350px",
+              marginTop:
+                "18px",
+              fontFamily:
+                "monospace",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
+
+const cardStyle = {
+  padding: "24px",
+  backgroundColor: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: "12px",
+};
+
+const inputStyle = {
+  width: "100%",
+  boxSizing:
+    "border-box" as const,
+  padding: "12px",
+  backgroundColor: "#0f172a",
+  color: "white",
+  border: "1px solid #475569",
+  borderRadius: "8px",
+};
+
+const readOnlyInputStyle = {
+  ...inputStyle,
+  backgroundColor: "#172033",
+  color: "#cbd5e1",
+  cursor: "default",
+};
+
+const textareaStyle = {
+  width: "100%",
+  boxSizing:
+    "border-box" as const,
+  minHeight: "120px",
+  padding: "12px",
+  backgroundColor: "#0f172a",
+  color: "white",
+  border: "1px solid #475569",
+  borderRadius: "8px",
+  resize: "vertical" as const,
+};
+
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "18px",
+};
+
+const headingStyle = {
+  marginTop: 0,
+  marginBottom: "20px",
+};
+
+const labelStyle = {
+  display: "block",
+  marginBottom: "7px",
+  color: "#cbd5e1",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+
+const spacedLabelStyle = {
+  ...labelStyle,
+  marginTop: "18px",
+};
+
+const subTextStyle = {
+  color: "#94a3b8",
+};
+
+const errorStyle = {
+  padding: "12px",
+  marginBottom: "18px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
+};
+
+const validationBoxStyle = {
+  padding: "14px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
+};
+
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  alignItems: "center",
+  gap: "20px",
+  flexWrap: "wrap" as const,
+};
+
+const ratingCountStyle = {
+  padding: "6px 10px",
+  color: "#cbd5e1",
+  backgroundColor: "#0f172a",
+  border:
+    "1px solid #334155",
+  borderRadius: "999px",
+  fontSize: "13px",
+  whiteSpace:
+    "nowrap" as const,
+};
+
+const buttonRowStyle = {
+  display: "flex",
+  justifyContent:
+    "flex-end",
+  gap: "12px",
+  flexWrap: "wrap" as const,
+};
+
+const primaryButtonStyle = {
+  padding: "14px 20px",
+  backgroundColor: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "16px",
+  fontWeight: 600,
+};
+
+const secondaryButtonStyle = {
+  padding: "14px 20px",
+  backgroundColor: "#334155",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "16px",
+};
+
+const copyButtonStyle = {
+  padding: "9px 14px",
+  backgroundColor: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const smallButtonStyle = {
+  padding: "9px 13px",
+  backgroundColor: "#475569",
+  color: "white",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 600,
+};

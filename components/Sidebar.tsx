@@ -1,65 +1,301 @@
-type SidebarProps = {
-  menuItems: string[];
-  activePage: string;
-  onPageChange: (page: string) => void;
+"use client";
+
+
+type Props = {
+
+  activePage:string;
+
+  onPageChange:(page:string)=>void;
+
+  role:string;
+
 };
 
+
+
+
+
 export default function Sidebar({
-  menuItems,
+
   activePage,
+
   onPageChange,
-}: SidebarProps) {
-  return (
-    <aside
-      style={{
-        width: "240px",
-        flexShrink: 0,
-        backgroundColor: "#111827",
-        borderRight: "1px solid #334155",
-        padding: "24px",
-      }}
-    >
-      <p
-        style={{
-          margin: "0 0 6px",
-          color: "#93c5fd",
-          fontSize: "12px",
-          fontWeight: "bold",
-          letterSpacing: "1.5px",
-        }}
-      >
-        TRAINING PORTAL
-      </p>
 
-      <h2 style={{ margin: "0 0 32px", fontSize: "20px" }}>
-        Management System
-      </h2>
+  role
 
-      <nav>
-        {menuItems.map((item) => (
-          <button
-            key={item}
-            onClick={() => onPageChange(item)}
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginBottom: "10px",
-              textAlign: "left",
-              backgroundColor:
-                activePage === item ? "#2563eb" : "transparent",
-              color: "white",
-              border:
-                activePage === item
-                  ? "1px solid #3b82f6"
-                  : "1px solid transparent",
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}
-          >
-            {item}
-          </button>
-        ))}
-      </nav>
-    </aside>
-  );
+}:Props){
+
+
+
+let menuItems:string[] = [];
+
+
+
+
+
+
+switch(role){
+
+
+
+// PROBATIONARY OFFICER
+
+case "Probationary Officer":
+
+menuItems = [
+
+"Dashboard",
+
+"My Notebook",
+
+"My File",
+
+"Settings"
+
+];
+
+break;
+
+
+
+
+
+
+// FIELD TRAINING OFFICER
+
+case "Field Training Officer":
+
+menuItems = [
+
+"Dashboard",
+
+"Daily Observation Reports",
+
+"P1 Records",
+
+"Settings"
+
+];
+
+break;
+
+
+
+
+
+
+// FIELD TRAINING MANAGER
+
+case "Field Training Manager":
+
+menuItems = [
+
+"Dashboard",
+
+"Daily Observation Reports",
+
+"P1 Records",
+
+"FTP Management",
+
+"Settings"
+
+];
+
+break;
+
+
+
+
+
+
+// FIELD TRAINING SUPERVISOR
+
+case "Field Training Supervisor":
+
+menuItems = [
+
+"Dashboard",
+
+"Daily Observation Reports",
+
+"P1 Records",
+
+"FTP Management",
+
+"Role Requests",
+
+"Settings"
+
+];
+
+break;
+
+
+
+
+
+
+// STAFF
+
+case "STAFF":
+
+menuItems = [
+
+"Dashboard",
+
+"Daily Observation Reports",
+
+"P1 Records",
+
+"FTP Management",
+
+"Role Requests",
+
+"Settings"
+
+];
+
+break;
+
+
+
+
+
+
+default:
+
+menuItems = [
+
+"Dashboard",
+
+"Settings"
+
+];
+
+break;
+
+
+
+}
+
+
+
+
+
+
+
+
+
+return (
+
+<aside
+
+style={{
+
+width:"260px",
+
+background:"#111827",
+
+minHeight:"100vh",
+
+padding:"20px"
+
+}}
+
+>
+
+
+<h2
+
+style={{
+
+color:"white",
+
+marginBottom:"30px"
+
+}}
+
+>
+
+LSPD FTP
+
+</h2>
+
+
+
+
+
+
+
+
+{
+
+menuItems.map(item=>(
+
+
+<button
+
+key={item}
+
+onClick={()=>onPageChange(item)}
+
+style={{
+
+width:"100%",
+
+padding:"14px",
+
+marginBottom:"10px",
+
+textAlign:"left",
+
+border:"none",
+
+borderRadius:"8px",
+
+cursor:"pointer",
+
+background:
+
+activePage === item
+
+?
+
+"#2563eb"
+
+:
+
+"#1e293b",
+
+color:"white",
+
+fontSize:"16px"
+
+}}
+
+>
+
+
+{item}
+
+
+</button>
+
+
+
+))
+
+
+}
+
+
+
+
+
+</aside>
+
+);
+
+
 }

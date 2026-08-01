@@ -30,15 +30,17 @@ export default function Login({
 
 
 
-  function handleLogin(){
+  async function handleLogin(){
 
     setError("");
 
+
     const user =
-      login(
+      await login(
         name,
         password
       );
+
 
 
     if(!user){
@@ -50,6 +52,7 @@ export default function Login({
       return;
 
     }
+
 
 
     onLogin(user);
@@ -207,8 +210,6 @@ export default function Login({
   );
 
 }
-
-
 
 
 

@@ -5,262 +5,149 @@ import { createAccount } from "../lib/auth";
 
 
 type Props = {
+
   onBack: () => void;
+
 };
 
 
+
+
 export default function CreateAccount({
+
   onBack,
+
 }: Props) {
 
 
-  const [name, setName] =
-    useState("");
 
-  const [password, setPassword] =
-    useState("");
+const [name,setName] =
+useState("");
 
-  const [error, setError] =
-    useState("");
+const [password,setPassword] =
+useState("");
 
+const [error,setError] =
+useState("");
 
 
 
 
-  function submit() {
 
-    setError("");
 
+async function submit(){
 
 
-    if (
-      name.trim() === "" ||
-      password.trim() === ""
-    ) {
+setError("");
 
-      setError(
-        "Please fill in all fields"
-      );
 
-      return;
 
-    }
 
 
+if(
+name.trim() === "" ||
+password.trim() === ""
+){
 
+setError(
+"Please fill in all fields."
+);
 
+return;
 
-    const newUser = {
+}
 
-      id: crypto.randomUUID(),
 
-      name:
-        name.trim(),
 
-      password,
 
-      role:
-        "P1",
 
-    };
+if(password.length < 6){
 
+setError(
+"Password is too short. Please use at least 6 characters."
+);
 
+return;
 
+}
 
 
-    console.log(
-      "Creating account:",
-      newUser
-    );
 
 
 
+try{
 
 
-    try {
+await createAccount(
 
-      createAccount(
-        newUser
-      );
+name.trim(),
 
+password
 
-      alert(
-        "Account created!"
-      );
+);
 
 
-      onBack();
 
 
-    } catch (error) {
+alert(
 
+"Account created!"
 
-      setError(
-        "Account already exists"
-      );
+);
 
 
-    }
 
-  }
 
+onBack();
 
 
 
 
+}
 
-  return (
+catch(error){
 
-    <main
 
-      style={{
-        minHeight:"100vh",
-        display:"flex",
-        alignItems:"center",
-        justifyContent:"center",
-        backgroundColor:"#0f172a",
-        color:"white",
-        fontFamily:"Arial, sans-serif",
-        padding:"24px",
-      }}
 
-    >
+console.error(
 
+"CREATE ACCOUNT ERROR",
 
-      <div
+JSON.stringify(
 
-        style={{
-          width:"100%",
-          maxWidth:"420px",
-          padding:"40px",
-          backgroundColor:"#1e293b",
-          borderRadius:"16px",
-          border:"1px solid #334155",
-          textAlign:"center",
-        }}
+error,
 
-      >
+null,
 
+2
 
-        <h1>
-          Create Account
-        </h1>
+)
 
+);
 
-        <p
-          style={{
-            color:"#94a3b8",
-          }}
-        >
-          New users start as P1.
-        </p>
 
 
 
 
+setError(
 
-        <input
+error instanceof Error
 
-          placeholder="Character Name"
+?
 
-          value={name}
+error.message
 
-          onChange={(e) =>
-            setName(
-              e.target.value
-            )
-          }
+:
 
-          style={inputStyle}
+"Account creation failed. Please try again."
 
-        />
+);
 
 
 
+}
 
 
-        <input
-
-          type="password"
-
-          placeholder="Password"
-
-          value={password}
-
-          onChange={(e) =>
-            setPassword(
-              e.target.value
-            )
-          }
-
-          style={inputStyle}
-
-        />
-
-
-
-
-
-        {
-          error &&
-
-          <p
-            style={{
-              color:"#f87171",
-            }}
-          >
-            {error}
-          </p>
-
-        }
-
-
-
-
-
-        <button
-
-          type="button"
-
-          onClick={submit}
-
-          style={buttonStyle}
-
-        >
-
-          Create Account
-
-        </button>
-
-
-
-
-
-        <button
-
-          type="button"
-
-          onClick={onBack}
-
-          style={{
-            ...buttonStyle,
-            marginTop:"12px",
-            backgroundColor:"#475569",
-          }}
-
-        >
-
-          Back
-
-        </button>
-
-
-      </div>
-
-
-    </main>
-
-  );
 
 }
 
@@ -270,23 +157,249 @@ export default function CreateAccount({
 
 
 
+
+return (
+
+<main
+
+style={{
+
+minHeight:"100vh",
+
+display:"flex",
+
+alignItems:"center",
+
+justifyContent:"center",
+
+backgroundColor:"#0f172a",
+
+color:"white",
+
+fontFamily:"Arial, sans-serif",
+
+padding:"24px",
+
+}}
+
+>
+
+
+
+<div
+
+style={{
+
+width:"100%",
+
+maxWidth:"420px",
+
+padding:"40px",
+
+backgroundColor:"#1e293b",
+
+borderRadius:"16px",
+
+border:"1px solid #334155",
+
+textAlign:"center",
+
+}}
+
+>
+
+
+
+<h1>
+
+Create Account
+
+</h1>
+
+
+
+
+
+<p
+
+style={{
+
+color:"#94a3b8",
+
+}}
+
+>
+
+New users start as Probationary Officers.
+
+</p>
+
+
+
+
+
+
+
+<input
+
+placeholder="Character Name"
+
+value={name}
+
+onChange={(e)=>
+
+setName(
+
+e.target.value
+
+)
+
+}
+
+style={inputStyle}
+
+/>
+
+
+
+
+
+
+
+
+<input
+
+type="password"
+
+placeholder="Password"
+
+value={password}
+
+onChange={(e)=>
+
+setPassword(
+
+e.target.value
+
+)
+
+}
+
+style={inputStyle}
+
+/>
+
+
+
+
+
+
+
+
+{
+
+error &&
+
+<p
+
+style={{
+
+color:"#f87171",
+
+}}
+
+>
+
+{error}
+
+</p>
+
+}
+
+
+
+
+
+<button
+
+type="button"
+
+onClick={submit}
+
+style={buttonStyle}
+
+>
+
+Create Account
+
+</button>
+
+
+
+
+
+
+
+<button
+
+type="button"
+
+onClick={onBack}
+
+style={{
+
+...buttonStyle,
+
+marginTop:"12px",
+
+backgroundColor:"#475569",
+
+}}
+
+>
+
+Back
+
+</button>
+
+
+
+
+
+</div>
+
+
+</main>
+
+
+);
+
+}
+
+
+
+
+
+
+
+
 const inputStyle = {
 
-  width:"100%",
+width:"100%",
 
-  boxSizing:"border-box" as const,
+boxSizing:"border-box" as const,
 
-  padding:"13px",
+padding:"13px",
 
-  marginBottom:"14px",
+marginBottom:"14px",
 
-  backgroundColor:"#0f172a",
+backgroundColor:"#0f172a",
 
-  color:"white",
+color:"white",
 
-  border:"1px solid #475569",
+border:"1px solid #475569",
 
-  borderRadius:"8px",
+borderRadius:"8px",
 
 };
 
@@ -294,20 +407,21 @@ const inputStyle = {
 
 
 
+
 const buttonStyle = {
 
-  width:"100%",
+width:"100%",
 
-  padding:"13px",
+padding:"13px",
 
-  backgroundColor:"#2563eb",
+backgroundColor:"#2563eb",
 
-  color:"white",
+color:"white",
 
-  border:"none",
+border:"none",
 
-  borderRadius:"8px",
+borderRadius:"8px",
 
-  cursor:"pointer",
+cursor:"pointer",
 
 };

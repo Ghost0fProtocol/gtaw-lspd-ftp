@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { supabase } from "../lib/supabase";
 import { getTrainees } from "../lib/trainees";
 import { getCurrentUser, logout } from "../lib/auth";
 
@@ -11,370 +12,687 @@ import Sidebar from "../components/Sidebar";
 import Dashboard from "../components/Dashboard";
 import Records from "../components/Records";
 import DORForm from "../components/DORForm";
+import PersonalDetails from "../components/PersonalDetails";
+import Settings from "../components/Settings";
+import MyNotebook from "../components/MyNotebook";
+import P1Records from "../components/P1Records";
 
 
-const menuItems = [
-  "Dashboard",
-  "Daily Observation Reports",
-  "Records",
-  "Tracking",
-  "Training",
-  "Settings",
-];
 
 
 
-export default function Home() {
+export default function Home(){
 
 
-  const [user, setUser] =
-    useState<any>(null);
 
+const [user,setUser] =
+useState<any>(null);
 
-  const [creatingAccount, setCreatingAccount] =
-    useState(false);
 
 
-  const [activePage, setActivePage] =
-    useState("Dashboard");
+const [creatingAccount,setCreatingAccount] =
+useState(false);
 
 
-  const [trainees, setTrainees] =
-    useState<any[]>([]);
 
+const [needsProfile,setNeedsProfile] =
+useState(false);
 
 
 
-  useEffect(() => {
+const [activePage,setActivePage] =
+useState("Dashboard");
 
-    const savedUser =
-      getCurrentUser();
 
 
-    if(savedUser){
+const [trainees,setTrainees] =
+useState<any[]>([]);
 
-      setUser(savedUser);
 
-    }
 
+const [selectedTrainee,setSelectedTrainee] =
+useState<string | null>(null);
 
 
-    async function load(){
 
-      const data =
-        await getTrainees();
+const [dorTrainee,setDorTrainee] =
+useState<string | null>(null);
 
 
-      console.log(
-        "Trainees:",
-        data
-      );
 
 
-      setTrainees(data);
 
-    }
 
 
-    load();
 
 
-  }, []);
+useEffect(()=>{
 
 
+async function load(){
 
 
+const current =
+await getCurrentUser();
 
 
 
-  if(creatingAccount){
+if(current){
 
-    return (
+setUser(current);
 
-      <CreateAccount
 
-        onBack={() =>
-          setCreatingAccount(false)
-        }
+if(!current.profile_complete){
 
-      />
+setNeedsProfile(true);
 
-    );
+}
 
-  }
+}
 
 
 
 
 
+const data =
+await getTrainees();
 
 
-  if(!user){
+setTrainees(data);
 
-    return (
 
-      <Login
 
-        onLogin={(loggedInUser)=>{
+}
 
-          console.log(
-            "LOGIN SUCCESS",
-            loggedInUser
-          );
 
 
-          setUser(
-            loggedInUser
-          );
+load();
 
-        }}
 
 
-        onCreateAccount={()=>{
+},[]);
 
-          console.log(
-            "OPEN CREATE ACCOUNT"
-          );
 
 
-          setCreatingAccount(true);
 
-        }}
 
-      />
 
-    );
 
-  }
 
 
+// WATCH ROLE CHANGES
 
+useEffect(()=>{
 
 
+if(!user) return;
 
 
 
-  function renderPage(){
+const channel =
 
-    switch(activePage){
+supabase
 
+.channel("profile-role-watch")
 
-      case "Dashboard":
 
-        return (
+.on(
 
-          <Dashboard
-            trainees={trainees}
-          />
+"postgres_changes",
 
-        );
+{
 
+event:"UPDATE",
 
+schema:"public",
 
-      case "Records":
+table:"profiles",
 
-        return <Records />;
+filter:`id=eq.${user.id}`
 
+},
 
 
-      case "Daily Observation Reports":
+(payload)=>{
 
-        return <DORForm />;
 
+if(payload.new.role !== user.role){
 
 
-      default:
+alert(
+"Your FTP role has changed. Please log in again."
+);
 
-        return (
 
-          <div
-            style={{
-              padding:"32px",
-              backgroundColor:"#1e293b",
-              border:"1px solid #334155",
-              borderRadius:"12px",
-            }}
-          >
 
-            <h2>
-              {activePage}
-            </h2>
+logout();
 
 
-            <p
-              style={{
-                color:"#94a3b8",
-              }}
-            >
+setUser(null);
 
-              Prototype page.
 
-            </p>
 
+}
 
-          </div>
 
-        );
 
-    }
+}
 
-  }
 
+)
 
+.subscribe();
 
 
 
 
 
-  return (
 
-    <main
+return ()=>{
 
-      style={{
 
-        minHeight:"100vh",
+supabase.removeChannel(channel);
 
-        display:"flex",
 
-        backgroundColor:"#0f172a",
+};
 
-        color:"white",
 
-        fontFamily:"Arial, sans-serif",
 
-      }}
+},[user]);
 
-    >
 
 
-      <Sidebar
 
-        menuItems={menuItems}
 
-        activePage={activePage}
 
-        onPageChange={setActivePage}
 
-      />
 
 
+function openNotebook(id:string){
 
-      <section
 
-        style={{
+setSelectedTrainee(id);
 
-          flex:1,
 
-          padding:"40px",
+setActivePage("My Notebook");
 
-        }}
 
-      >
+}
 
 
 
-        <div
 
-          style={{
 
-            display:"flex",
 
-            justifyContent:"space-between",
 
-            alignItems:"center",
 
-            marginBottom:"32px",
+function openDOR(id:string){
 
-          }}
 
-        >
+setDorTrainee(id);
 
 
-          <div>
+setActivePage("Daily Observation Reports");
 
-            <p
-              style={{
-                color:"#94a3b8",
-              }}
-            >
-              Welcome back
-            </p>
 
+}
 
-            <h1>
-              {activePage}
-            </h1>
 
 
-            <p
-              style={{
-                color:"#94a3b8",
-              }}
-            >
 
-              {user.name} - {user.role}
 
-            </p>
 
 
-          </div>
 
 
+if(creatingAccount){
 
+return (
 
-          <button
+<CreateAccount
 
-            onClick={()=>{
+onBack={()=>setCreatingAccount(false)}
 
-              logout();
+/>
 
-              setUser(null);
+);
 
-              setActivePage(
-                "Dashboard"
-              );
+}
 
-            }}
 
-            style={{
 
-              padding:"10px 16px",
 
-              backgroundColor:"#1e293b",
 
-              color:"white",
 
-              border:"1px solid #475569",
 
-              borderRadius:"8px",
 
-              cursor:"pointer",
+if(!user){
 
-            }}
+return (
 
-          >
+<Login
 
-            Log Out
 
-          </button>
+onLogin={(loggedInUser)=>{
 
 
+setUser(loggedInUser);
 
-        </div>
 
 
+if(!loggedInUser.profile_complete){
 
+setNeedsProfile(true);
 
+}
 
-        {renderPage()}
 
 
+}}
 
-      </section>
 
 
-    </main>
+onCreateAccount={()=>{
 
-  );
+setCreatingAccount(true);
+
+}}
+
+/>
+
+);
+
+}
+
+
+
+
+
+
+
+
+
+if(needsProfile){
+
+return (
+
+<PersonalDetails
+
+user={user}
+
+onComplete={()=>setNeedsProfile(false)}
+
+/>
+
+);
+
+}
+
+
+
+
+
+
+
+
+
+function renderPage(){
+
+
+
+switch(activePage){
+
+
+
+case "Dashboard":
+
+return (
+
+<Dashboard
+
+trainees={trainees}
+
+/>
+
+);
+
+
+
+
+
+
+
+case "My Notebook":
+
+return (
+
+<MyNotebook
+
+user={user}
+
+traineeId={selectedTrainee || undefined}
+
+/>
+
+);
+
+
+
+
+
+
+
+case "P1 Records":
+
+return (
+
+<P1Records
+
+openNotebook={openNotebook}
+
+openDOR={openDOR}
+
+/>
+
+);
+
+
+
+
+
+
+
+case "Daily Observation Reports":
+
+return (
+
+<DORForm
+
+traineeId={dorTrainee || undefined}
+
+/>
+
+);
+
+
+
+
+
+
+
+case "Records":
+
+return (
+
+<Records/>
+
+);
+
+
+
+
+
+
+
+case "Settings":
+
+return (
+
+<Settings
+
+user={user}
+
+onUpdate={setUser}
+
+/>
+
+);
+
+
+
+
+
+
+
+default:
+
+return (
+
+<div
+
+style={{
+
+background:"#1e293b",
+
+padding:"30px",
+
+borderRadius:"12px"
+
+}}
+
+>
+
+<h2>
+
+{activePage}
+
+</h2>
+
+
+<p style={{color:"#94a3b8"}}>
+
+Coming soon.
+
+</p>
+
+
+</div>
+
+);
+
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+return (
+
+<main
+
+style={{
+
+display:"flex",
+
+minHeight:"100vh",
+
+background:"#0f172a",
+
+color:"white",
+
+fontFamily:"Arial, sans-serif"
+
+}}
+
+>
+
+
+
+
+
+<Sidebar
+
+activePage={activePage}
+
+onPageChange={setActivePage}
+
+role={user.role}
+
+/>
+
+
+
+
+
+
+
+
+<section
+
+style={{
+
+flex:1,
+
+padding:"40px"
+
+}}
+
+>
+
+
+
+
+
+
+
+<div
+
+style={{
+
+display:"flex",
+
+justifyContent:"space-between",
+
+alignItems:"center"
+
+}}
+
+>
+
+
+
+
+
+<div>
+
+
+<p style={{color:"#94a3b8"}}>
+
+Welcome back
+
+</p>
+
+
+<h1>
+
+{activePage}
+
+</h1>
+
+
+<p style={{color:"#94a3b8"}}>
+
+{user.name} - {user.role}
+
+</p>
+
+
+</div>
+
+
+
+
+
+
+
+<button
+
+onClick={async()=>{
+
+
+await logout();
+
+
+setUser(null);
+
+
+}}
+
+style={{
+
+padding:"10px 16px",
+
+background:"#1e293b",
+
+color:"white",
+
+border:"1px solid #475569",
+
+borderRadius:"8px"
+
+}}
+
+>
+
+Logout
+
+</button>
+
+
+
+</div>
+
+
+
+
+
+
+
+
+
+<div
+
+style={{
+
+marginTop:"30px"
+
+}}
+
+>
+
+
+{renderPage()}
+
+
+</div>
+
+
+
+
+
+
+
+</section>
+
+
+
+
+
+
+
+</main>
+
+);
+
 
 }

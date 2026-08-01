@@ -1,58 +1,216 @@
 "use client";
 
+import { supabase } from "./supabase";
+
 
 export type User = {
+
   id: string;
+
   name: string;
-  password: string;
+
+  rank: string;
+
   role: string;
+
+  profile_complete: boolean;
+
 };
 
 
 
-const STORAGE_KEY = "ftp_users";
 
-const CURRENT_USER_KEY = "ftp_current_user";
+// CREATE ACCOUNT
 
+export async function createAccount(
 
+  name: string,
 
+  password: string
 
-
-export function createAccount(
-  user: User
 ) {
 
-  const existingUsers =
-    getUsers();
 
 
-  const exists =
-    existingUsers.find(
-      existing =>
-        existing.name.toLowerCase() ===
-        user.name.toLowerCase()
-    );
+  const {
+    data: existingProfile
+  } =
+    await supabase
+
+      .from("profiles")
+
+      .select("id")
+
+      .ilike(
+        "name",
+        name
+      )
+
+      .maybeSingle();
 
 
-  if(exists){
+
+
+
+  if(existingProfile){
 
     throw new Error(
-      "User already exists"
+      "Account already exists"
     );
 
   }
 
 
 
-  existingUsers.push(
-    user
-  );
 
 
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(existingUsers)
-  );
+
+
+  const email =
+
+    name
+
+      .toLowerCase()
+
+      .replace(/[^a-z0-9]/g, "")
+
+      +
+
+      Date.now()
+
+      +
+
+      "@gmail.com";
+
+
+
+
+
+
+
+
+  const {
+    data,
+    error
+  }
+  =
+    await supabase.auth.signUp({
+
+      email,
+
+      password,
+
+    });
+
+
+
+
+
+
+  if(error){
+
+    throw error;
+
+  }
+
+
+
+
+
+
+
+  if(!data.user){
+
+    throw new Error(
+      "User creation failed"
+    );
+
+  }
+
+
+
+
+
+
+
+
+  const {
+    error: profileError
+  }
+  =
+    await supabase
+
+      .from("profiles")
+
+      .insert({
+
+        id:
+          data.user.id,
+
+
+        name,
+
+
+        email,
+
+
+
+        // LSPD rank
+
+        rank:
+
+          "Police Officer I",
+
+
+
+        // FTP role
+
+        role:
+
+          "Probationary Officer",
+
+
+
+        // Role request system
+
+        requested_role:
+
+          null,
+
+
+        role_request_status:
+
+          null,
+
+
+
+        profile_complete:
+
+          false,
+
+
+      });
+
+
+
+
+
+
+
+  if(profileError){
+
+    throw profileError;
+
+  }
+
+
+
+
+
+
+
+  return data.user;
+
 
 }
 
@@ -62,62 +220,47 @@ export function createAccount(
 
 
 
-export function getUsers(): User[] {
-
-  if(
-    typeof window === "undefined"
-  ){
-
-    return [];
-
-  }
 
 
-  const data =
-    localStorage.getItem(
-      STORAGE_KEY
-    );
+// LOGIN
 
+export async function login(
 
-  if(!data){
+  name:string,
 
-    return [];
+  password:string
 
-  }
-
-
-  return JSON.parse(data);
-
-}
-
-
-
-
-
-
-
-export function login(
-  name: string,
-  password: string
 ) {
 
 
-  const users =
-    getUsers();
+
+  const {
+    data: profile,
+    error: profileError
+  }
+  =
+    await supabase
+
+      .from("profiles")
+
+      .select("*")
+
+      .ilike(
+
+        "name",
+
+        name
+
+      )
+
+      .single();
 
 
 
-  const user =
-    users.find(
-      item =>
-        item.name.toLowerCase() ===
-        name.toLowerCase() &&
-        item.password === password
-    );
 
 
 
-  if(!user){
+  if(profileError || !profile){
 
     return null;
 
@@ -125,14 +268,55 @@ export function login(
 
 
 
-  localStorage.setItem(
-    CURRENT_USER_KEY,
-    JSON.stringify(user)
-  );
 
 
 
-  return user;
+
+
+  const {
+    error
+  }
+  =
+    await supabase.auth.signInWithPassword({
+
+      email:
+
+        profile.email,
+
+
+      password,
+
+
+    });
+
+
+
+
+
+
+  if(error){
+
+    console.error(
+
+      "LOGIN ERROR",
+
+      error
+
+    );
+
+
+    return null;
+
+
+  }
+
+
+
+
+
+
+  return profile;
+
 
 }
 
@@ -142,12 +326,26 @@ export function login(
 
 
 
-export function getCurrentUser() {
 
 
-  if(
-    typeof window === "undefined"
-  ){
+// CURRENT USER
+
+export async function getCurrentUser(){
+
+
+
+  const {
+    data
+  }
+  =
+    await supabase.auth.getUser();
+
+
+
+
+
+
+  if(!data.user){
 
     return null;
 
@@ -155,22 +353,58 @@ export function getCurrentUser() {
 
 
 
-  const data =
-    localStorage.getItem(
-      CURRENT_USER_KEY
-    );
 
 
 
-  if(!data){
+
+
+  const {
+    data: profile,
+    error
+  }
+  =
+    await supabase
+
+      .from("profiles")
+
+      .select("*")
+
+      .eq(
+
+        "id",
+
+        data.user.id
+
+      )
+
+      .single();
+
+
+
+
+
+
+
+  if(error || !profile){
+
+
+    await supabase.auth.signOut();
+
 
     return null;
+
 
   }
 
 
 
-  return JSON.parse(data);
+
+
+
+
+  return profile;
+
+
 
 }
 
@@ -180,10 +414,14 @@ export function getCurrentUser() {
 
 
 
-export function logout(){
 
-  localStorage.removeItem(
-    CURRENT_USER_KEY
-  );
+
+// LOGOUT
+
+export async function logout(){
+
+
+  await supabase.auth.signOut();
+
 
 }
