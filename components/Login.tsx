@@ -17,15 +17,13 @@ export default function Login({
 }: LoginProps) {
 
 
-  const [reference,setReference] =
+  const [name, setName] =
     useState("");
 
-  const [password,setPassword] =
+  const [password, setPassword] =
     useState("");
 
-
-
-  const [error,setError] =
+  const [error, setError] =
     useState("");
 
 
@@ -38,7 +36,7 @@ export default function Login({
 
     const user =
       login(
-        reference,
+        name,
         password
       );
 
@@ -46,7 +44,7 @@ export default function Login({
     if(!user){
 
       setError(
-        "Invalid reference or password"
+        "Invalid character name or password"
       );
 
       return;
@@ -72,11 +70,14 @@ export default function Login({
         justifyContent:"center",
         backgroundColor:"#0f172a",
         color:"white",
+        fontFamily:"Arial, sans-serif",
         padding:"24px",
       }}
+
     >
 
       <div
+
         style={{
           width:"100%",
           maxWidth:"420px",
@@ -84,7 +85,9 @@ export default function Login({
           backgroundColor:"#1e293b",
           borderRadius:"16px",
           border:"1px solid #334155",
+          textAlign:"center",
         }}
+
       >
 
         <h1>
@@ -103,14 +106,15 @@ export default function Login({
 
 
 
+
         <input
 
-          placeholder="Reference"
+          placeholder="Character Name"
 
-          value={reference}
+          value={name}
 
           onChange={(e)=>
-            setReference(
+            setName(
               e.target.value
             )
           }
@@ -118,6 +122,7 @@ export default function Login({
           style={inputStyle}
 
         />
+
 
 
 
@@ -143,6 +148,7 @@ export default function Login({
 
 
 
+
         {
           error &&
 
@@ -159,6 +165,7 @@ export default function Login({
 
 
 
+
         <button
 
           onClick={handleLogin}
@@ -170,6 +177,7 @@ export default function Login({
           Sign In
 
         </button>
+
 
 
 
@@ -202,6 +210,10 @@ export default function Login({
 
 
 
+
+
+
+
 const inputStyle = {
 
   width:"100%",
@@ -221,6 +233,8 @@ const inputStyle = {
   borderRadius:"8px",
 
 };
+
+
 
 
 

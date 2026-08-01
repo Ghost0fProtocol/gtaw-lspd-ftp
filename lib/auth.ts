@@ -4,20 +4,15 @@
 export type User = {
   id: string;
   name: string;
-  reference: string;
   password: string;
   role: string;
 };
 
 
 
-const STORAGE_KEY =
-  "ftp_users";
+const STORAGE_KEY = "ftp_users";
 
-
-
-const CURRENT_USER_KEY =
-  "ftp_current_user";
+const CURRENT_USER_KEY = "ftp_current_user";
 
 
 
@@ -34,8 +29,8 @@ export function createAccount(
   const exists =
     existingUsers.find(
       existing =>
-        existing.reference ===
-        user.reference
+        existing.name.toLowerCase() ===
+        user.name.toLowerCase()
     );
 
 
@@ -58,7 +53,6 @@ export function createAccount(
     STORAGE_KEY,
     JSON.stringify(existingUsers)
   );
-
 
 }
 
@@ -103,7 +97,7 @@ export function getUsers(): User[] {
 
 
 export function login(
-  reference: string,
+  name: string,
   password: string
 ) {
 
@@ -116,7 +110,8 @@ export function login(
   const user =
     users.find(
       item =>
-        item.reference === reference &&
+        item.name.toLowerCase() ===
+        name.toLowerCase() &&
         item.password === password
     );
 

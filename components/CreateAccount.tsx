@@ -17,28 +17,28 @@ export default function CreateAccount({
   const [name, setName] =
     useState("");
 
-  const [reference, setReference] =
-    useState("");
-
   const [password, setPassword] =
     useState("");
+
+  const [error, setError] =
+    useState("");
+
+
 
 
 
   function submit() {
 
-    console.log(
-      "Create account clicked"
-    );
+    setError("");
+
 
 
     if (
       name.trim() === "" ||
-      reference.trim() === "" ||
       password.trim() === ""
     ) {
 
-      alert(
+      setError(
         "Please fill in all fields"
       );
 
@@ -48,16 +48,14 @@ export default function CreateAccount({
 
 
 
+
+
     const newUser = {
 
-      id:
-        crypto.randomUUID(),
+      id: crypto.randomUUID(),
 
       name:
         name.trim(),
-
-      reference:
-        reference.trim(),
 
       password,
 
@@ -68,28 +66,45 @@ export default function CreateAccount({
 
 
 
+
+
     console.log(
-      "Creating:",
+      "Creating account:",
       newUser
     );
 
 
 
-    createAccount(
-      newUser
-    );
 
 
+    try {
 
-    alert(
-      "Account created!"
-    );
+      createAccount(
+        newUser
+      );
 
 
+      alert(
+        "Account created!"
+      );
 
-    onBack();
+
+      onBack();
+
+
+    } catch (error) {
+
+
+      setError(
+        "Account already exists"
+      );
+
+
+    }
 
   }
+
+
 
 
 
@@ -105,10 +120,12 @@ export default function CreateAccount({
         justifyContent:"center",
         backgroundColor:"#0f172a",
         color:"white",
+        fontFamily:"Arial, sans-serif",
         padding:"24px",
       }}
 
     >
+
 
       <div
 
@@ -119,9 +136,11 @@ export default function CreateAccount({
           backgroundColor:"#1e293b",
           borderRadius:"16px",
           border:"1px solid #334155",
+          textAlign:"center",
         }}
 
       >
+
 
         <h1>
           Create Account
@@ -138,9 +157,11 @@ export default function CreateAccount({
 
 
 
+
+
         <input
 
-          placeholder="Name"
+          placeholder="Character Name"
 
           value={name}
 
@@ -155,22 +176,6 @@ export default function CreateAccount({
         />
 
 
-
-        <input
-
-          placeholder="Reference"
-
-          value={reference}
-
-          onChange={(e) =>
-            setReference(
-              e.target.value
-            )
-          }
-
-          style={inputStyle}
-
-        />
 
 
 
@@ -194,6 +199,25 @@ export default function CreateAccount({
 
 
 
+
+
+        {
+          error &&
+
+          <p
+            style={{
+              color:"#f87171",
+            }}
+          >
+            {error}
+          </p>
+
+        }
+
+
+
+
+
         <button
 
           type="button"
@@ -207,6 +231,8 @@ export default function CreateAccount({
           Create Account
 
         </button>
+
+
 
 
 
@@ -241,6 +267,9 @@ export default function CreateAccount({
 
 
 
+
+
+
 const inputStyle = {
 
   width:"100%",
@@ -260,6 +289,8 @@ const inputStyle = {
   borderRadius:"8px",
 
 };
+
+
 
 
 
