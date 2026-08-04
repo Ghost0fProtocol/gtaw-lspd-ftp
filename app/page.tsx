@@ -13,6 +13,7 @@ import {
 } from "../lib/auth";
 
 import Login from "../components/Login";
+import ForcePasswordChange from "../components/ForcePasswordChange";
 import CreateAccount from "../components/CreateAccount";
 import ChooseInitialRole from "../components/ChooseInitialRole";
 import PersonalDetails from "../components/PersonalDetails";
@@ -28,10 +29,10 @@ import RoleRequests from "../components/RoleRequests";
 import MyFTOFile from "../components/MyFTOFile";
 import FTORecords from "../components/FTORecords";
 import PersonnelManagement from "../components/PersonnelManagement";
-import TrainingCalendar from "../components/TrainingCalendar";
 import FieldTrainingManagementDashboard from "../components/FieldTrainingManagementDashboard";
 import BatchManagement from "../components/BatchManagement";
 import AuditLog from "../components/AuditLog";
+import CommentCardCentre from "../components/CommentCardCentre";
 
 type InitialRole =
   | "Probationary Officer"
@@ -474,6 +475,28 @@ export default function Home() {
     );
   }
 
+  if (
+    user.must_change_password ===
+    true
+  ) {
+    return (
+      <ForcePasswordChange
+        user={user}
+        onComplete={(
+          updatedUser
+        ) => {
+          setUser(
+            updatedUser
+          );
+        }}
+        onLogout={async () => {
+          await logout();
+          resetSession();
+        }}
+      />
+    );
+  }
+
   if (needsInitialRole) {
     return (
       <ChooseInitialRole
@@ -713,13 +736,6 @@ export default function Home() {
           />
         );
 
-      case "Training Calendar":
-        return (
-          <TrainingCalendar
-            user={user}
-          />
-        );
-
       case "Settings":
         return (
           <Settings
@@ -727,6 +743,13 @@ export default function Home() {
             onUpdate={
               setUser
             }
+          />
+        );
+
+      case "Comment Card Centre":
+        return (
+          <CommentCardCentre
+            user={user}
           />
         );
 

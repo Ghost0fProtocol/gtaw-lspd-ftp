@@ -2,426 +2,211 @@
 
 import { supabase } from "./supabase";
 
-
 export type User = {
-
   id: string;
-
   name: string;
-
   rank: string;
-
   role: string;
-
   profile_complete: boolean;
-
+  must_change_password?: boolean;
 };
-
-
-
 
 // CREATE ACCOUNT
 
 export async function createAccount(
-
   name: string,
-
   password: string
-
 ) {
-
-
-
   const {
-    data: existingProfile
-  } =
-    await supabase
+    data: existingProfile,
+    error:
+      existingProfileError,
+  } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike(
+      "name",
+      name
+    )
+    .maybeSingle();
 
-      .from("profiles")
-
-      .select("id")
-
-      .ilike(
-        "name",
-        name
-      )
-
-      .maybeSingle();
-
-
-
-
-
-  if(existingProfile){
-
+  if (existingProfileError) {
     throw new Error(
-      "Account already exists"
+      "The account could not be checked. Please try again."
     );
-
   }
 
-
-
-
-
-
+  if (existingProfile) {
+    throw new Error(
+      "An account already exists for that character name."
+    );
+  }
 
   const email =
-
     name
-
       .toLowerCase()
-
-      .replace(/[^a-z0-9]/g, "")
-
-      +
-
-      Date.now()
-
-      +
-
-      "@gmail.com";
-
-
-
-
-
-
-
+      .replace(
+        /[^a-z0-9]/g,
+        ""
+      ) +
+    Date.now() +
+    "@gmail.com";
 
   const {
     data,
-    error
-  }
-  =
+    error,
+  } =
     await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+  if (error) {
+    throw new Error(
+      "The account could not be created. Please try again."
+    );
+  }
+
+  if (!data.user) {
+    throw new Error(
+      "The account could not be created."
+    );
+  }
+
+  const {
+    error: profileError,
+  } = await supabase
+    .from("profiles")
+    .insert({
+      id:
+        data.user.id,
+
+      name,
 
       email,
 
-      password,
+      rank:
+        "Police Officer I",
 
+      role:
+        "Probationary Officer",
+
+      requested_role:
+        null,
+
+      role_request_status:
+        null,
+
+      profile_complete:
+        false,
+
+      must_change_password:
+        false,
     });
 
-
-
-
-
-
-  if(error){
-
-    throw error;
-
-  }
-
-
-
-
-
-
-
-  if(!data.user){
+  if (profileError) {
+    await supabase.auth.signOut();
 
     throw new Error(
-      "User creation failed"
+      "The account was created, but the profile could not be saved."
     );
-
   }
-
-
-
-
-
-
-
-
-  const {
-    error: profileError
-  }
-  =
-    await supabase
-
-      .from("profiles")
-
-      .insert({
-
-        id:
-          data.user.id,
-
-
-        name,
-
-
-        email,
-
-
-
-        // LSPD rank
-
-        rank:
-
-          "Police Officer I",
-
-
-
-        // FTP role
-
-        role:
-
-          "Probationary Officer",
-
-
-
-        // Role request system
-
-        requested_role:
-
-          null,
-
-
-        role_request_status:
-
-          null,
-
-
-
-        profile_complete:
-
-          false,
-
-
-      });
-
-
-
-
-
-
-
-  if(profileError){
-
-    throw profileError;
-
-  }
-
-
-
-
-
-
 
   return data.user;
-
-
 }
-
-
-
-
-
-
-
-
 
 // LOGIN
 
 export async function login(
+  name: string,
+  password: string
+): Promise<User | null> {
+  const cleanName =
+    name.trim();
 
-  name:string,
-
-  password:string
-
-) {
-
-
+  if (
+    !cleanName ||
+    !password
+  ) {
+    return null;
+  }
 
   const {
     data: profile,
-    error: profileError
-  }
-  =
-    await supabase
+    error: profileError,
+  } = await supabase
+    .from("profiles")
+    .select("*")
+    .ilike(
+      "name",
+      cleanName
+    )
+    .maybeSingle();
 
-      .from("profiles")
-
-      .select("*")
-
-      .ilike(
-
-        "name",
-
-        name
-
-      )
-
-      .single();
-
-
-
-
-
-
-  if(profileError || !profile){
-
+  if (
+    profileError ||
+    !profile
+  ) {
     return null;
-
   }
-
-
-
-
-
-
-
 
   const {
-    error
-  }
-  =
+    error: signInError,
+  } =
     await supabase.auth.signInWithPassword({
-
       email:
-
         profile.email,
-
-
       password,
-
-
     });
 
-
-
-
-
-
-  if(error){
-
-    console.error(
-
-      "LOGIN ERROR",
-
-      error
-
-    );
-
-
+  if (signInError) {
     return null;
-
-
   }
 
-
-
-
-
-
-  return profile;
-
-
+  return profile as User;
 }
-
-
-
-
-
-
-
-
 
 // CURRENT USER
 
-export async function getCurrentUser(){
-
-
-
+export async function getCurrentUser(): Promise<User | null> {
   const {
-    data
-  }
-  =
+    data,
+    error: authError,
+  } =
     await supabase.auth.getUser();
 
-
-
-
-
-
-  if(!data.user){
-
+  if (
+    authError ||
+    !data.user
+  ) {
     return null;
-
   }
-
-
-
-
-
-
-
 
   const {
     data: profile,
-    error
-  }
-  =
-    await supabase
+    error,
+  } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq(
+      "id",
+      data.user.id
+    )
+    .maybeSingle();
 
-      .from("profiles")
-
-      .select("*")
-
-      .eq(
-
-        "id",
-
-        data.user.id
-
-      )
-
-      .single();
-
-
-
-
-
-
-
-  if(error || !profile){
-
-
+  if (
+    error ||
+    !profile
+  ) {
     await supabase.auth.signOut();
-
-
     return null;
-
-
   }
 
-
-
-
-
-
-
-  return profile;
-
-
-
+  return profile as User;
 }
-
-
-
-
-
-
-
-
 
 // LOGOUT
 
-export async function logout(){
-
-
+export async function logout() {
   await supabase.auth.signOut();
-
-
 }

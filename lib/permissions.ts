@@ -404,14 +404,6 @@ export function getSidebarMenuItems(
   }
 
   if (
-    canViewCalendar(role)
-  ) {
-    menuItems.push(
-      "Training Calendar"
-    );
-  }
-
-  if (
     canManagePersonnel(role)
   ) {
     menuItems.push(

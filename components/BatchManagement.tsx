@@ -16,7 +16,7 @@ type Props = {
 };
 
 type BatchStatus = "Upcoming" | "Active" | "Completed" | "Archived";
-type WorkspaceTab = "overview" | "probationers" | "settings";
+type WorkspaceTab = "overview" | "probationers" | "calendar" | "settings";
 
 type Batch = {
   id: string;
@@ -933,7 +933,16 @@ export default function BatchManagement({ user }: Props) {
                   active={activeTab === "probationers"}
                   onClick={() => setActiveTab("probationers")}
                 />
-                <TabButton label="Batch settings" active={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
+                <TabButton
+                  label="Calendar"
+                  active={activeTab === "calendar"}
+                  onClick={() => setActiveTab("calendar")}
+                />
+                <TabButton
+                  label="Batch settings"
+                  active={activeTab === "settings"}
+                  onClick={() => setActiveTab("settings")}
+                />
               </nav>
 
               <div className="bm-workspace-body">
@@ -962,6 +971,13 @@ export default function BatchManagement({ user }: Props) {
                     onAdd={(trainee) => openFtmAssignment(trainee, "add")}
                     onChangeFtm={(trainee) => openFtmAssignment(trainee, "change")}
                     onRemove={(trainee) => void removeTrainee(trainee)}
+                  />
+                )}
+
+                {activeTab === "calendar" && (
+                  <BatchCalendar
+                    batch={selectedBatch}
+                    milestones={milestones}
                   />
                 )}
 
@@ -1429,6 +1445,237 @@ function FtmAssignmentModal({
       </section>
     </div>
   );
+}
+
+
+function BatchCalendar({
+  batch,
+  milestones,
+}: {
+  batch: Batch;
+  milestones: Array<{
+    label: string;
+    date: string;
+    day: number;
+  }>;
+}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const induction = new Date(
+    `${batch.induction_date}T00:00:00`
+  );
+
+  const currentDay = Math.max(
+    0,
+    Math.floor(
+      (
+        today.getTime() -
+        induction.getTime()
+      ) /
+        86400000
+    )
+  );
+
+  const nextMilestone =
+    milestones.find(
+      (milestone) =>
+        new Date(
+          `${milestone.date}T23:59:59`
+        ).getTime() >=
+        today.getTime()
+    ) ?? null;
+
+  return (
+    <div className="bm-stack">
+      <section className="bm-panel bm-calendar-summary">
+        <div>
+          <div className="bm-eyebrow">
+            PROGRAMME CALENDAR
+          </div>
+
+          <h3>
+            {batch.name}
+          </h3>
+
+          <p>
+            All dates are generated automatically from the intake induction date.
+            Edit the induction date in Batch Settings and this calendar updates instantly.
+          </p>
+        </div>
+
+        <div className="bm-calendar-day-card">
+          <span>Current programme day</span>
+          <strong>Day {currentDay}</strong>
+        </div>
+      </section>
+
+      {nextMilestone && (
+        <section className="bm-panel bm-calendar-next">
+          <div className="bm-eyebrow">
+            NEXT MILESTONE
+          </div>
+
+          <h3>
+            {nextMilestone.label}
+          </h3>
+
+          <p>
+            {formatDate(nextMilestone.date)}
+            {" · "}
+            {formatMilestoneRemaining(nextMilestone.date)}
+          </p>
+        </section>
+      )}
+
+      <section className="bm-panel">
+        <PanelHeading
+          eyebrow="OFFICIAL TIMELINE"
+          title="Programme milestones"
+        />
+
+        <div className="bm-calendar-timeline">
+          {milestones.map(
+            (milestone, index) => {
+              const milestoneDate =
+                new Date(
+                  `${milestone.date}T23:59:59`
+                );
+
+              const complete =
+                milestoneDate.getTime() <
+                today.getTime();
+
+              const current =
+                nextMilestone?.label ===
+                milestone.label;
+
+              return (
+                <div
+                  key={milestone.label}
+                  className={`bm-calendar-step ${
+                    complete
+                      ? "is-complete"
+                      : current
+                        ? "is-current"
+                        : ""
+                  }`}
+                >
+                  <div className="bm-calendar-step-marker">
+                    {complete
+                      ? "✓"
+                      : index + 1}
+                  </div>
+
+                  <div className="bm-calendar-step-content">
+                    <span>
+                      {milestone.label}
+                    </span>
+
+                    <strong>
+                      {formatDate(
+                        milestone.date
+                      )}
+                    </strong>
+
+                    <small>
+                      {milestone.day === 0
+                        ? "Programme start"
+                        : `Day ${milestone.day}`}
+                    </small>
+                  </div>
+                </div>
+              );
+            }
+          )}
+        </div>
+      </section>
+
+      <section className="bm-panel">
+        <PanelHeading
+          eyebrow="SINGLE SOURCE OF TRUTH"
+          title="How this calendar works"
+        />
+
+        <div className="bm-calendar-info-grid">
+          <div>
+            <strong>Induction</strong>
+            <span>
+              Stored directly on the batch record.
+            </span>
+          </div>
+
+          <div>
+            <strong>Minimum upgrade</strong>
+            <span>
+              Calculated at Day {FTP_MILESTONES.minimumUpgrade}.
+            </span>
+          </div>
+
+          <div>
+            <strong>FPP deadline</strong>
+            <span>
+              Calculated at Day {FTP_MILESTONES.fppDeadline}.
+            </span>
+          </div>
+
+          <div>
+            <strong>Completion</strong>
+            <span>
+              Calculated at Day {FTP_MILESTONES.completion}.
+            </span>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatMilestoneRemaining(
+  value: string
+) {
+  const target =
+    new Date(
+      `${value}T23:59:59`
+    );
+
+  const today =
+    new Date();
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const days =
+    Math.ceil(
+      (
+        target.getTime() -
+        today.getTime()
+      ) /
+        86400000
+    );
+
+  if (days === 0) {
+    return "Today";
+  }
+
+  if (days === 1) {
+    return "Tomorrow";
+  }
+
+  if (days > 1) {
+    return `${days} days remaining`;
+  }
+
+  const overdue =
+    Math.abs(days);
+
+  return overdue === 1
+    ? "1 day overdue"
+    : `${overdue} days overdue`;
 }
 
 function BatchSettings({
@@ -2083,6 +2330,152 @@ function Styles() {
       .bm-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
       .bm-chip { padding: 4px 7px; border-radius: 999px; background: #182a43; color: #9bb2d2; font-size: 9px; }
 
+      .bm-calendar-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .bm-calendar-summary h3,
+      .bm-calendar-next h3 {
+        margin: 6px 0 8px;
+      }
+
+      .bm-calendar-summary p,
+      .bm-calendar-next p {
+        margin: 0;
+      }
+
+      .bm-calendar-day-card {
+        min-width: 180px;
+        display: grid;
+        gap: 5px;
+        padding: 16px;
+        text-align: center;
+        border: 1px solid #31517c;
+        border-radius: 12px;
+        background: rgba(49,132,255,.1);
+      }
+
+      .bm-calendar-day-card span {
+        color: var(--bm-muted);
+        font-size: 11px;
+      }
+
+      .bm-calendar-day-card strong {
+        font-size: 25px;
+      }
+
+      .bm-calendar-next {
+        border-color: #315f9a;
+        background:
+          linear-gradient(
+            145deg,
+            rgba(49,132,255,.16),
+            #0b182b
+          );
+      }
+
+      .bm-calendar-timeline {
+        position: relative;
+        display: grid;
+        grid-template-columns:
+          repeat(4, minmax(0,1fr));
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .bm-calendar-timeline::before {
+        content: "";
+        position: absolute;
+        top: 22px;
+        left: 7%;
+        right: 7%;
+        height: 2px;
+        background: var(--bm-border);
+      }
+
+      .bm-calendar-step {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 11px;
+        text-align: center;
+      }
+
+      .bm-calendar-step-marker {
+        position: relative;
+        z-index: 1;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--bm-border-strong);
+        border-radius: 999px;
+        background: #0a1729;
+        color: var(--bm-muted);
+        font-weight: 900;
+      }
+
+      .bm-calendar-step.is-complete
+      .bm-calendar-step-marker {
+        border-color: #34d399;
+        background: rgba(16,185,129,.18);
+        color: #8ff0c9;
+      }
+
+      .bm-calendar-step.is-current
+      .bm-calendar-step-marker {
+        border-color: #60a5fa;
+        background: rgba(49,132,255,.22);
+        color: white;
+        box-shadow:
+          0 0 0 5px rgba(49,132,255,.1);
+      }
+
+      .bm-calendar-step-content {
+        display: grid;
+        gap: 5px;
+      }
+
+      .bm-calendar-step-content span,
+      .bm-calendar-step-content small {
+        color: var(--bm-muted);
+      }
+
+      .bm-calendar-step-content span {
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .bm-calendar-step-content small {
+        font-size: 10px;
+      }
+
+      .bm-calendar-info-grid {
+        display: grid;
+        grid-template-columns:
+          repeat(4, minmax(0,1fr));
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .bm-calendar-info-grid > div {
+        display: grid;
+        gap: 6px;
+        padding: 14px;
+        border: 1px solid var(--bm-border);
+        border-radius: 11px;
+        background: #0a1729;
+      }
+
+      .bm-calendar-info-grid span {
+        color: var(--bm-muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
       .bm-settings-panel { max-width: 880px; }
       .bm-form { display: grid; gap: 16px; margin-top: 18px; }
       .bm-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
@@ -2175,7 +2568,12 @@ function Styles() {
         .bm-sidebar { border-right: 0; border-bottom: 1px solid var(--bm-border); }
         .bm-batch-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
         .bm-overview-grid { grid-template-columns: 1fr; }
-        .bm-mini-stat-grid, .bm-milestone-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .bm-mini-stat-grid,
+        .bm-milestone-grid,
+        .bm-calendar-info-grid,
+        .bm-calendar-timeline {
+          grid-template-columns: repeat(2, minmax(0,1fr));
+        }
         .bm-form-grid { grid-template-columns: 1fr; }
         .bm-date-preview { grid-template-columns: 1fr; }
       }
@@ -2189,7 +2587,21 @@ function Styles() {
         .bm-tabs { overflow-x: auto; }
         .bm-trainee-card, .bm-available-row { grid-template-columns: 1fr; }
         .bm-card-actions { flex-direction: column; }
-        .bm-mini-stat-grid, .bm-milestone-grid { grid-template-columns: 1fr; }
+        .bm-mini-stat-grid,
+        .bm-milestone-grid,
+        .bm-calendar-info-grid,
+        .bm-calendar-timeline {
+          grid-template-columns: 1fr;
+        }
+
+        .bm-calendar-summary {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .bm-calendar-timeline::before {
+          display: none;
+        }
         .bm-exception-row, .bm-modal-person, .bm-ranking-topline, .bm-modal-footer { flex-direction: column; align-items: stretch; }
         .bm-load-row { grid-template-columns: 1fr; }
         .bm-modal-backdrop { padding: 0; }

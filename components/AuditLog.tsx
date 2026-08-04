@@ -251,7 +251,17 @@ const card = { overflow: "hidden", background: "#172033", border: "1px solid #33
 const detail = { alignSelf: "start", padding: 22, color: "white", background: "#172033", border: "1px solid #334155", borderRadius: 14 };
 const header = { display: "flex", justifyContent: "space-between", padding: "18px 20px", color: "white", borderBottom: "1px solid #334155" };
 const list = { display: "grid", gap: 10, padding: 14 };
-const entry = { padding: 16, textAlign: "left" as const, color: "white", background: "#0f172a", border: "1px solid #334155", borderRadius: 10, cursor: "pointer" };
+const entry = {
+  padding: 16,
+  textAlign: "left" as const,
+  color: "white",
+  background: "#0f172a",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "#334155",
+  borderRadius: 10,
+  cursor: "pointer",
+};
 const top = { display: "flex", justifyContent: "space-between", gap: 14 };
 const summary = { margin: "8px 0", color: "#cbd5e1" };
 const badge = { display: "inline-block", padding: "4px 8px", color: "#bfdbfe", background: "rgba(37,99,235,.2)", border: "1px solid #2563eb", borderRadius: 999, fontSize: 11, fontWeight: 800 };

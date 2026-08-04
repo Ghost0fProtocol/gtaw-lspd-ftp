@@ -54,6 +54,16 @@ type CalendarEvent = {
   batch_name: string | null;
 };
 
+type DashboardBatch = {
+  id: string;
+  name: string;
+  induction_date: string;
+  minimum_upgrade_date: string | null;
+  fpp_deadline: string | null;
+  final_completion_deadline: string | null;
+  status: string | null;
+};
+
 type ActivityItem = {
   id: string;
   title: string;
@@ -884,52 +894,175 @@ export default function Dashboard({
   }
 
   async function loadCalendarEvents() {
-    const today =
-      new Date()
-        .toISOString()
-        .slice(0, 10);
+    try {
+      const {
+        data,
+        error:
+          batchError,
+      } = await supabase
+        .from(
+          "ftp_batches"
+        )
+        .select(`
+          id,
+          name,
+          induction_date,
+          minimum_upgrade_date,
+          fpp_deadline,
+          final_completion_deadline,
+          status
+        `)
+        .in(
+          "status",
+          [
+            "Active",
+            "Upcoming",
+          ]
+        )
+        .order(
+          "induction_date",
+          {
+            ascending: true,
+          }
+        );
 
-    const {
-      data,
-      error:
-        calendarError,
-    } = await supabase
-      .from(
-        "ftp_calendar_events"
-      )
-      .select(`
-        id,
-        title,
-        description,
-        event_date,
-        event_type,
-        batch_name
-      `)
-      .gte(
-        "event_date",
-        today
-      )
-      .order(
-        "event_date",
+      if (batchError) {
+        throw batchError;
+      }
+
+      const batches =
+        (
+          data ??
+          []
+        ) as DashboardBatch[];
+
+      const activeBatch =
+        batches.find(
+          (batch) =>
+            batch.status ===
+            "Active"
+        );
+
+      const selectedBatch =
+        activeBatch ??
+        batches[0] ??
+        null;
+
+      if (!selectedBatch) {
+        setCalendarEvents([]);
+        return;
+      }
+
+      const inductionDate =
+        selectedBatch.induction_date;
+
+      const minimumUpgradeDate =
+        selectedBatch.minimum_upgrade_date ??
+        addDaysUTC(
+          inductionDate,
+          21
+        );
+
+      const fppDeadline =
+        selectedBatch.fpp_deadline ??
+        addDaysUTC(
+          inductionDate,
+          43
+        );
+
+      const completionDate =
+        selectedBatch.final_completion_deadline ??
+        addDaysUTC(
+          inductionDate,
+          50
+        );
+
+      setCalendarEvents([
         {
-          ascending: true,
-        }
-      )
-      .limit(8);
+          id:
+            `${selectedBatch.id}-induction`,
 
-    if (calendarError) {
+          title:
+            "Induction",
+
+          description:
+            "The official start of the FTP intake.",
+
+          event_date:
+            inductionDate,
+
+          event_type:
+            "Induction",
+
+          batch_name:
+            selectedBatch.name,
+        },
+        {
+          id:
+            `${selectedBatch.id}-minimum-upgrade`,
+
+          title:
+            "Minimum Upgrade Date",
+
+          description:
+            "The earliest scheduled point for progression beyond the initial training period.",
+
+          event_date:
+            minimumUpgradeDate,
+
+          event_type:
+            "Minimum Upgrade Date",
+
+          batch_name:
+            selectedBatch.name,
+        },
+        {
+          id:
+            `${selectedBatch.id}-fpp-deadline`,
+
+          title:
+            "FPP Deadline",
+
+          description:
+            "The target deadline for completing the Week 2 requirements and entering FPP.",
+
+          event_date:
+            fppDeadline,
+
+          event_type:
+            "FPP Deadline",
+
+          batch_name:
+            selectedBatch.name,
+        },
+        {
+          id:
+            `${selectedBatch.id}-completion`,
+
+          title:
+            "Programme Completion",
+
+          description:
+            "The target date for completing the full Field Training Programme.",
+
+          event_date:
+            completionDate,
+
+          event_type:
+            "Programme Completion",
+
+          batch_name:
+            selectedBatch.name,
+        },
+      ]);
+    } catch (calendarError) {
       console.warn(
-        "CALENDAR LOAD ERROR",
+        "BATCH CALENDAR LOAD ERROR",
         calendarError
       );
 
       setCalendarEvents([]);
-      return;
     }
-
-    setCalendarEvents(
-      data ?? []
-    );
   }
 
   async function loadWeeklyDORTrend() {
@@ -1382,7 +1515,7 @@ export default function Dashboard({
                 }
                 onOpenCalendar={() =>
                   onNavigate(
-                    "Training Calendar"
+                    "Batch Management"
                   )
                 }
               />
@@ -2722,6 +2855,16 @@ function CalendarPanel({
         )
     );
 
+  const utcToday =
+    new Date();
+
+  utcToday.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
+
   const minimumFPPEvent =
     orderedEvents.find(
       (event) =>
@@ -2738,9 +2881,9 @@ function CalendarPanel({
     canManageOperations &&
     minimumFPPEvent &&
     new Date(
-      `${minimumFPPEvent.event_date}T23:59:59`
+      `${minimumFPPEvent.event_date}T00:00:00Z`
     ).getTime() <
-      Date.now()
+      utcToday.getTime()
       ? trainees.filter(
           (trainee) => {
             const stage =
@@ -2771,9 +2914,9 @@ function CalendarPanel({
     orderedEvents.find(
       (event) =>
         new Date(
-          `${event.event_date}T23:59:59`
+          `${event.event_date}T00:00:00Z`
         ).getTime() >=
-        Date.now()
+        utcToday.getTime()
     ) ?? null;
 
   return (
@@ -2811,6 +2954,12 @@ function CalendarPanel({
           <strong style={nextMilestoneTitleStyle}>
             {nextMilestone.title}
           </strong>
+
+          {nextMilestone.batch_name && (
+            <span style={nextMilestoneBatchStyle}>
+              {nextMilestone.batch_name}
+            </span>
+          )}
 
           <span style={nextMilestoneDateStyle}>
             {formatCalendarDate(
@@ -2879,9 +3028,10 @@ function CalendarPanel({
           </strong>
 
           <p style={emptyCalendarTextStyle}>
-            FTS+ can create the full
-            calendar by entering one
-            induction date.
+            Create an active or
+            upcoming intake in Batch
+            Management to publish its
+            programme milestones here.
           </p>
         </div>
       ) : (
@@ -2901,6 +3051,12 @@ function CalendarPanel({
                   <strong>
                     {event.title}
                   </strong>
+
+                  {event.batch_name && (
+                    <p style={milestoneBatchStyle}>
+                      {event.batch_name}
+                    </p>
+                  )}
 
                   {event.description && (
                     <p style={milestoneDescriptionStyle}>
@@ -2922,9 +3078,9 @@ function CalendarPanel({
 
       <div style={calendarFooterStyle}>
         <span>
-          The remaining milestones are
-          generated automatically from
-          the induction date.
+          These milestones are generated
+          automatically from the selected
+          batch induction date.
         </span>
       </div>
     </section>
@@ -3482,7 +3638,7 @@ function formatDaysRemaining(
 ) {
   const target =
     new Date(
-      `${value}T23:59:59Z`
+      `${value}T00:00:00Z`
     );
 
   const today =
@@ -3496,7 +3652,7 @@ function formatDaysRemaining(
   );
 
   const days =
-    Math.ceil(
+    Math.round(
       (
         target.getTime() -
         today.getTime()
@@ -3552,6 +3708,25 @@ function getMonth(
       }
     )
     .toUpperCase();
+}
+
+function addDaysUTC(
+  value: string,
+  days: number
+) {
+  const date =
+    new Date(
+      `${value}T00:00:00Z`
+    );
+
+  date.setUTCDate(
+    date.getUTCDate() +
+    days
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
 }
 
 function getToneStyle(
@@ -4130,6 +4305,12 @@ const nextMilestoneTitleStyle = {
   lineHeight: 1.4,
 };
 
+const nextMilestoneBatchStyle = {
+  color: "#94a3b8",
+  fontSize: "9px",
+  fontWeight: 700,
+};
+
 const nextMilestoneDateStyle = {
   color: "#93c5fd",
   fontSize: "9px",
@@ -4193,6 +4374,13 @@ const milestoneRowStyle = {
   padding: "12px",
   borderBottom: "1px solid #263248",
   fontSize: "10px",
+};
+
+const milestoneBatchStyle = {
+  margin: "3px 0 0",
+  color: "#93c5fd",
+  fontSize: "8px",
+  fontWeight: 800,
 };
 
 const milestoneDescriptionStyle = {

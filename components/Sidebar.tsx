@@ -14,7 +14,22 @@ type Props = {
   role: string;
 };
 
-const managementRoles = [
+const ftoRecordsRoles = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
+
+const auditRoles = [
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
+
+const commentCardReviewRoles = [
   "Field Training Manager",
   "Field Training Supervisor",
   "FTP Staff",
@@ -37,7 +52,7 @@ export default function Sidebar({
   ];
 
   if (
-    managementRoles.includes(
+    ftoRecordsRoles.includes(
       role
     ) &&
     !menuItems.includes(
@@ -69,7 +84,20 @@ export default function Sidebar({
   }
 
   if (
-    managementRoles.includes(
+    commentCardReviewRoles.includes(
+      role
+    ) &&
+    !menuItems.includes(
+      "Comment Card Centre"
+    )
+  ) {
+    menuItems.push(
+      "Comment Card Centre"
+    );
+  }
+
+  if (
+    auditRoles.includes(
       role
     ) &&
     !menuItems.includes(

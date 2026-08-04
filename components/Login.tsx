@@ -54,7 +54,6 @@ export default function Login({
       setError(
         "Please enter your character name."
       );
-
       return;
     }
 
@@ -62,7 +61,6 @@ export default function Login({
       setError(
         "Please enter your password."
       );
-
       return;
     }
 
@@ -76,8 +74,10 @@ export default function Login({
         );
 
       if (!user) {
+        setPassword("");
+
         setError(
-          "Invalid character name or password"
+          "Incorrect character name or password."
         );
 
         return;
@@ -86,14 +86,14 @@ export default function Login({
       onLogin(user);
     } catch (loginError) {
       console.error(
-        "LOGIN ERROR",
+        "LOGIN REQUEST ERROR",
         loginError
       );
 
+      setPassword("");
+
       setError(
-        loginError instanceof Error
-          ? loginError.message
-          : "Unable to sign in."
+        "Unable to sign in right now. Please try again."
       );
     } finally {
       setSigningIn(false);
@@ -103,7 +103,11 @@ export default function Login({
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <h1>
+        <div style={brandMarkStyle}>
+          FTP
+        </div>
+
+        <h1 style={titleStyle}>
           FTP Training Portal
         </h1>
 
@@ -116,42 +120,57 @@ export default function Login({
             handleLogin
           }
         >
-          <input
-            autoFocus
-            autoComplete="username"
-            placeholder="Character Name"
-            value={name}
-            onChange={(event) =>
-              setName(
-                event.target.value
-              )
-            }
-            disabled={
-              signingIn
-            }
-            style={inputStyle}
-          />
+          <label style={fieldStyle}>
+            <span style={labelStyle}>
+              Character Name
+            </span>
 
-          <input
-            type="password"
-            autoComplete="current-password"
-            placeholder="Password"
-            value={password}
-            onChange={(event) =>
-              setPassword(
-                event.target.value
-              )
-            }
-            disabled={
-              signingIn
-            }
-            style={inputStyle}
-          />
+            <input
+              autoFocus
+              autoComplete="username"
+              value={name}
+              onChange={(event) => {
+                setName(
+                  event.target.value
+                );
+                setError("");
+              }}
+              disabled={
+                signingIn
+              }
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>
+              Password
+            </span>
+
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => {
+                setPassword(
+                  event.target.value
+                );
+                setError("");
+              }}
+              disabled={
+                signingIn
+              }
+              style={inputStyle}
+            />
+          </label>
 
           {error && (
-            <p style={errorStyle}>
+            <div
+              role="alert"
+              style={errorStyle}
+            >
               {error}
-            </p>
+            </div>
           )}
 
           <button
@@ -186,11 +205,7 @@ export default function Login({
             signingIn
           }
           style={{
-            ...buttonStyle,
-            marginTop:
-              "12px",
-            backgroundColor:
-              "#475569",
+            ...secondaryButtonStyle,
             opacity:
               signingIn
                 ? 0.7
@@ -214,12 +229,12 @@ const pageStyle = {
   alignItems: "center",
   justifyContent:
     "center",
-  backgroundColor:
-    "#0f172a",
+  padding: "24px",
   color: "white",
+  background:
+    "radial-gradient(circle at top, #172554 0%, #0f172a 46%, #020617 100%)",
   fontFamily:
     "Arial, sans-serif",
-  padding: "24px",
 };
 
 const cardStyle = {
@@ -227,16 +242,54 @@ const cardStyle = {
   maxWidth: "420px",
   padding: "40px",
   backgroundColor:
-    "#1e293b",
+    "rgba(30, 41, 59, 0.96)",
   borderRadius: "16px",
   border:
     "1px solid #334155",
+  boxShadow:
+    "0 24px 70px rgba(0, 0, 0, 0.34)",
+};
+
+const brandMarkStyle = {
+  width: "48px",
+  height: "48px",
+  display: "grid",
+  placeItems: "center",
+  margin: "0 auto 18px",
+  color: "#dbeafe",
+  background:
+    "linear-gradient(135deg, #2563eb, #1d4ed8)",
+  border:
+    "1px solid #60a5fa",
+  borderRadius: "12px",
+  fontSize: "12px",
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+};
+
+const titleStyle = {
+  margin: "0 0 8px",
   textAlign:
     "center" as const,
 };
 
 const subTextStyle = {
+  margin: "0 0 24px",
   color: "#94a3b8",
+  textAlign:
+    "center" as const,
+};
+
+const fieldStyle = {
+  display: "grid",
+  gap: "7px",
+  marginBottom: "14px",
+};
+
+const labelStyle = {
+  color: "#cbd5e1",
+  fontSize: "13px",
+  fontWeight: 700,
 };
 
 const inputStyle = {
@@ -244,7 +297,6 @@ const inputStyle = {
   boxSizing:
     "border-box" as const,
   padding: "13px",
-  marginBottom: "14px",
   backgroundColor:
     "#0f172a",
   color: "white",
@@ -254,9 +306,16 @@ const inputStyle = {
 };
 
 const errorStyle = {
-  color: "#f87171",
-  marginTop: "0",
+  padding: "12px",
   marginBottom: "14px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
+  fontSize: "13px",
+  lineHeight: 1.45,
 };
 
 const buttonStyle = {
@@ -267,7 +326,13 @@ const buttonStyle = {
   color: "white",
   border: "none",
   borderRadius: "8px",
-  cursor: "pointer",
   fontWeight:
     "bold" as const,
+};
+
+const secondaryButtonStyle = {
+  ...buttonStyle,
+  marginTop: "12px",
+  backgroundColor:
+    "#475569",
 };

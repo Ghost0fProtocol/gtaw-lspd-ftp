@@ -28,6 +28,7 @@ type PersonnelProfile = {
   profile_complete: boolean | null;
   requested_role: string | null;
   role_request_status: string | null;
+  must_change_password: boolean | null;
 };
 
 type TraineeRecord = {
@@ -124,7 +125,11 @@ const personnelManagementRoles = [
   "Field Training Supervisor",
 ];
 
-
+const passwordResetRoles = [
+  "Field Training Supervisor",
+  "FTP Staff",
+  "LSPD STAFF",
+];
 
 export default function PersonnelManagement({
   currentUser,
@@ -132,6 +137,13 @@ export default function PersonnelManagement({
   const canManagePersonnel =
     personnelManagementRoles.includes(
       normaliseRole(currentUser.role)
+    );
+
+  const canResetPasswords =
+    passwordResetRoles.includes(
+      normaliseRole(
+        currentUser.role
+      )
     );
 
   const [personnel, setPersonnel] =
@@ -181,6 +193,33 @@ export default function PersonnelManagement({
       | null
     >(null);
 
+  const [
+    resettingPassword,
+    setResettingPassword,
+  ] = useState(false);
+
+  const [
+    temporaryPassword,
+    setTemporaryPassword,
+  ] = useState("");
+
+  const [
+    temporaryPasswordUserId,
+    setTemporaryPasswordUserId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    temporaryPasswordUserName,
+    setTemporaryPasswordUserName,
+  ] = useState("");
+
+  const [
+    passwordCopied,
+    setPasswordCopied,
+  ] = useState(false);
+
   useEffect(() => {
     void loadPersonnel();
   }, []);
@@ -201,6 +240,12 @@ export default function PersonnelManagement({
     setPersonnelAction(null);
     setError("");
     setSuccessMessage("");
+    setTemporaryPassword("");
+    setTemporaryPasswordUserId(
+      null
+    );
+    setTemporaryPasswordUserName("");
+    setPasswordCopied(false);
   }, [selectedUserId]);
 
   const filteredPersonnel =
@@ -282,7 +327,8 @@ export default function PersonnelManagement({
             role,
             profile_complete,
             requested_role,
-            role_request_status
+            role_request_status,
+            must_change_password
           `)
           .order("name", {
             ascending: true,
@@ -737,6 +783,196 @@ export default function PersonnelManagement({
     } finally {
       setPersonnelAction(null);
     }
+  }
+
+  async function resetSelectedPassword() {
+    if (
+      !selectedUser ||
+      !canResetPasswords
+    ) {
+      return;
+    }
+
+    if (
+      selectedUser.id ===
+      currentUser.id
+    ) {
+      setError(
+        "You cannot use the staff password reset tool on your own account."
+      );
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Reset the password for ${selectedUser.name ?? "this account"}? Their current password will stop working immediately.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setResettingPassword(true);
+    setError("");
+    setSuccessMessage("");
+    setTemporaryPassword("");
+    setTemporaryPasswordUserId(
+      null
+    );
+    setTemporaryPasswordUserName("");
+    setPasswordCopied(false);
+
+    try {
+      const {
+        data: sessionData,
+        error: sessionError,
+      } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const accessToken =
+        sessionData.session
+          ?.access_token;
+
+      if (!accessToken) {
+        throw new Error(
+          "Your login session could not be found. Please log in again."
+        );
+      }
+
+      const response =
+        await fetch(
+          "/api/admin/reset-password",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+            body:
+              JSON.stringify({
+                userId:
+                  selectedUser.id,
+              }),
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ??
+          "The password reset failed."
+        );
+      }
+
+      const generatedPassword =
+        typeof result
+          ?.temporaryPassword ===
+          "string"
+          ? result.temporaryPassword
+          : "";
+
+      if (!generatedPassword) {
+        throw new Error(
+          "The password was reset, but no temporary password was returned."
+        );
+      }
+
+      setTemporaryPassword(
+        generatedPassword
+      );
+
+      setTemporaryPasswordUserId(
+        selectedUser.id
+      );
+
+      setTemporaryPasswordUserName(
+        result?.userName ??
+        selectedUser.name ??
+        "Selected User"
+      );
+
+      setPersonnel(
+        (current) =>
+          current.map(
+            (person) =>
+              person.id ===
+              selectedUser.id
+                ? {
+                    ...person,
+                    must_change_password:
+                      true,
+                  }
+                : person
+          )
+      );
+
+      setSuccessMessage(
+        result?.message ??
+        `A temporary password was created for ${selectedUser.name ?? "the selected account"}.`
+      );
+    } catch (resetError) {
+      console.error(
+        "RESET PERSONNEL PASSWORD ERROR",
+        resetError
+      );
+
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "The password reset failed."
+      );
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
+  async function copyTemporaryPassword() {
+    if (!temporaryPassword) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        temporaryPassword
+      );
+
+      setPasswordCopied(true);
+
+      window.setTimeout(
+        () => {
+          setPasswordCopied(
+            false
+          );
+        },
+        2000
+      );
+    } catch (copyError) {
+      console.error(
+        "COPY TEMPORARY PASSWORD ERROR",
+        copyError
+      );
+
+      setError(
+        "The temporary password could not be copied. Select and copy it manually."
+      );
+    }
+  }
+
+  function clearTemporaryPassword() {
+    setTemporaryPassword("");
+    setTemporaryPasswordUserId(
+      null
+    );
+    setTemporaryPasswordUserName("");
+    setPasswordCopied(false);
   }
 
   function selectPerson(
@@ -1194,6 +1430,35 @@ export default function PersonnelManagement({
                       "deleteAccount"
                     )
                   }
+                  canResetPassword={
+                    canResetPasswords &&
+                    selectedUser.id !==
+                      currentUser.id
+                  }
+                  resettingPassword={
+                    resettingPassword
+                  }
+                  resetPassword={
+                    resetSelectedPassword
+                  }
+                  temporaryPassword={
+                    temporaryPasswordUserId ===
+                    selectedUser.id
+                      ? temporaryPassword
+                      : ""
+                  }
+                  temporaryPasswordUserName={
+                    temporaryPasswordUserName
+                  }
+                  passwordCopied={
+                    passwordCopied
+                  }
+                  copyTemporaryPassword={
+                    copyTemporaryPassword
+                  }
+                  clearTemporaryPassword={
+                    clearTemporaryPassword
+                  }
                 />
               )}
             </>
@@ -1251,6 +1516,15 @@ function OverviewPanel({
                     "No status"
                   }`
                 : "None"
+            }
+          />
+
+          <Detail
+            label="Password Status"
+            value={
+              user.must_change_password
+                ? "Temporary password issued"
+                : "Normal access"
             }
           />
         </div>
@@ -1522,6 +1796,14 @@ function AccessPanel({
   analyseAccount,
   personnelAction,
   deleteAccount,
+  canResetPassword,
+  resettingPassword,
+  resetPassword,
+  temporaryPassword,
+  temporaryPasswordUserName,
+  passwordCopied,
+  copyTemporaryPassword,
+  clearTemporaryPassword,
 }: {
   selectedUser: PersonnelUser;
   editedRole: string;
@@ -1540,6 +1822,14 @@ function AccessPanel({
     | "deleteAccount"
     | null;
   deleteAccount: () => Promise<void>;
+  canResetPassword: boolean;
+  resettingPassword: boolean;
+  resetPassword: () => Promise<void>;
+  temporaryPassword: string;
+  temporaryPasswordUserName: string;
+  passwordCopied: boolean;
+  copyTemporaryPassword: () => Promise<void>;
+  clearTemporaryPassword: () => void;
 }) {
   return (
     <>
@@ -1607,6 +1897,106 @@ function AccessPanel({
             ? "Saving Role..."
             : "Save Role Change"}
         </button>
+      </div>
+
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>
+          Password Access
+        </h3>
+
+        <p style={mutedStyle}>
+          Issue a one-time temporary password when this user cannot access their account.
+          Their current password will stop working immediately.
+        </p>
+
+        <div style={passwordStatusStyle}>
+          <span>
+            Current status
+          </span>
+
+          <strong>
+            {selectedUser.must_change_password
+              ? "Temporary password active"
+              : "Normal password access"}
+          </strong>
+        </div>
+
+        {!canResetPassword ? (
+          <div style={passwordRestrictedStyle}>
+            {selectedUser.id
+              ? "Password resets require FTS, FTP Staff or LSPD Staff access. You also cannot reset your own account here."
+              : "Password reset is unavailable."}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              void resetPassword()
+            }
+            disabled={
+              resettingPassword
+            }
+            style={{
+              ...resetPasswordButtonStyle,
+              opacity:
+                resettingPassword
+                  ? 0.65
+                  : 1,
+            }}
+          >
+            {resettingPassword
+              ? "Generating Temporary Password..."
+              : "Reset Password"}
+          </button>
+        )}
+
+        {temporaryPassword && (
+          <div style={temporaryPasswordCardStyle}>
+            <div style={temporaryPasswordHeaderStyle}>
+              <div>
+                <strong>
+                  Temporary Password
+                </strong>
+
+                <p style={temporaryPasswordWarningStyle}>
+                  This password is shown only in this panel. Give it privately to{" "}
+                  {temporaryPasswordUserName || "the user"}.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  clearTemporaryPassword
+                }
+                style={closeTemporaryPasswordButtonStyle}
+                aria-label="Hide temporary password"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={temporaryPasswordValueStyle}>
+              {temporaryPassword}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                void copyTemporaryPassword()
+              }
+              style={copyPasswordButtonStyle}
+            >
+              {passwordCopied
+                ? "Copied!"
+                : "Copy Password"}
+            </button>
+
+            <p style={temporaryPasswordFooterStyle}>
+              Do not put this password in an audit note, Discord message history, or any permanent record.
+            </p>
+          </div>
+        )}
       </div>
 
       <div style={dangerCardStyle}>
@@ -2598,6 +2988,109 @@ const successStyle = {
     "rgba(20, 83, 45, 0.35)",
   border: "1px solid #166534",
   borderRadius: "8px",
+};
+
+const passwordStatusStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "12px",
+  margin: "16px 0",
+  color: "#cbd5e1",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  fontSize: "12px",
+};
+
+const resetPasswordButtonStyle = {
+  width: "100%",
+  padding: "12px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "1px solid #3b82f6",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const passwordRestrictedStyle = {
+  padding: "12px",
+  color: "#94a3b8",
+  backgroundColor: "#111827",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
+
+const temporaryPasswordCardStyle = {
+  display: "grid",
+  gap: "12px",
+  padding: "16px",
+  marginTop: "16px",
+  color: "#e2e8f0",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.18)",
+  border: "1px solid #2563eb",
+  borderRadius: "10px",
+};
+
+const temporaryPasswordHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+};
+
+const temporaryPasswordWarningStyle = {
+  margin: "5px 0 0",
+  color: "#93c5fd",
+  fontSize: "11px",
+  lineHeight: 1.5,
+};
+
+const closeTemporaryPasswordButtonStyle = {
+  padding: "0 5px",
+  color: "#bfdbfe",
+  backgroundColor: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "22px",
+  lineHeight: 1,
+};
+
+const temporaryPasswordValueStyle = {
+  padding: "13px",
+  color: "#f8fafc",
+  backgroundColor: "#020617",
+  border: "1px solid #475569",
+  borderRadius: "8px",
+  fontFamily:
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: "17px",
+  fontWeight: 900,
+  letterSpacing: "0.04em",
+  overflowWrap: "anywhere" as const,
+  userSelect: "all" as const,
+};
+
+const copyPasswordButtonStyle = {
+  padding: "10px 13px",
+  color: "white",
+  backgroundColor: "#16a34a",
+  border: "1px solid #22c55e",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const temporaryPasswordFooterStyle = {
+  margin: 0,
+  color: "#fca5a5",
+  fontSize: "10px",
+  lineHeight: 1.5,
 };
 
 const dangerCardStyle = {

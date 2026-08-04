@@ -1112,16 +1112,68 @@ export default function Settings({
   }
 
   return (
-    <div style={pageStyle}>
-      <section style={cardStyle}>
-        <h2>
-          Account Settings
-        </h2>
+    <div style={settingsPageStyle}>
+      <section style={settingsHeroStyle}>
+        <div>
+          <p style={settingsEyebrowStyle}>
+            ACCOUNT & FTP TOOLS
+          </p>
 
-        <div style={gridStyle}>
-          <Field
-            label="Character Name"
-          >
+          <h2 style={settingsHeroTitleStyle}>
+            Settings
+          </h2>
+
+          <p style={settingsHeroTextStyle}>
+            Manage your profile, availability and FTP tools from one place.
+          </p>
+        </div>
+
+        <div style={settingsIdentityStyle}>
+          <span style={settingsIdentityLabelStyle}>
+            CURRENT ACCESS
+          </span>
+
+          <strong style={settingsIdentityValueStyle}>
+            {user.role || "Probationary Officer"}
+          </strong>
+        </div>
+      </section>
+
+      {message && (
+        <div
+          style={
+            message.startsWith("✅")
+              ? settingsSuccessStyle
+              : settingsErrorStyle
+          }
+        >
+          {message}
+        </div>
+      )}
+
+      <section style={settingsPanelStyle}>
+        <div style={settingsSectionHeaderStyle}>
+          <div>
+            <p style={settingsSectionEyebrowStyle}>
+              PROFILE
+            </p>
+
+            <h3 style={settingsSectionTitleStyle}>
+              Account Information
+            </h3>
+
+            <p style={settingsSectionTextStyle}>
+              Keep your character and departmental details accurate.
+            </p>
+          </div>
+
+          <span style={settingsRoleBadgeStyle}>
+            {user.role || "Probationary Officer"}
+          </span>
+        </div>
+
+        <div style={settingsProfileGridStyle}>
+          <Field label="Character Name">
             <input
               value={name}
               onChange={(event) =>
@@ -1129,13 +1181,11 @@ export default function Settings({
                   event.target.value
                 )
               }
-              style={input}
+              style={settingsInputStyle}
             />
           </Field>
 
-          <Field
-            label="Badge Number"
-          >
+          <Field label="Badge Number">
             <input
               value={badge}
               onChange={(event) =>
@@ -1143,20 +1193,30 @@ export default function Settings({
                   event.target.value
                 )
               }
-              style={input}
+              style={settingsInputStyle}
+            />
+          </Field>
+
+          <Field label="Work Number">
+            <input
+              value={workNumber}
+              onChange={(event) =>
+                setWorkNumber(
+                  event.target.value
+                )
+              }
+              style={settingsInputStyle}
             />
           </Field>
 
           {isProbationaryOfficer ? (
             <LockedProfileField
-              label="Police Rank"
+              label="LSPD Rank"
               value="Police Officer I"
-              helpText="Your rank will become editable once you become a Field Training Officer."
+              helpText="Your rank becomes editable once you become a Field Training Officer."
             />
           ) : (
-            <Field
-              label="LSPD Rank"
-            >
+            <Field label="LSPD Rank">
               <select
                 value={rank}
                 onChange={(event) =>
@@ -1164,7 +1224,7 @@ export default function Settings({
                     event.target.value
                   )
                 }
-                style={input}
+                style={settingsInputStyle}
               >
                 {ranks.map(
                   (item) => (
@@ -1184,12 +1244,10 @@ export default function Settings({
             <LockedProfileField
               label="Division"
               value="Mission Row Division"
-              helpText="New Probationary Officers begin in Mission Row Division."
+              helpText="Probationary Officers begin in Mission Row Division."
             />
           ) : (
-            <Field
-              label="Division"
-            >
+            <Field label="Division">
               <select
                 value={division}
                 onChange={(event) =>
@@ -1197,7 +1255,7 @@ export default function Settings({
                     event.target.value
                   )
                 }
-                style={input}
+                style={settingsInputStyle}
               >
                 {divisions.map(
                   (item) => (
@@ -1213,107 +1271,226 @@ export default function Settings({
             </Field>
           )}
 
-          <Field
-            label="Work Number"
-          >
-            <input
-              value={
-                workNumber
-              }
-              onChange={(event) =>
-                setWorkNumber(
-                  event.target.value
-                )
-              }
-              style={input}
-            />
-          </Field>
+          <div style={settingsLockedRoleStyle}>
+            <span style={settingsLockedLabelStyle}>
+              FTP Role
+            </span>
 
-          <Field
-            label="FTP Role"
-          >
-            <input
-              value={
-                user.role ||
-                "Probationary Officer"
-              }
-              disabled
-              style={{
-                ...input,
-                opacity: 0.6,
-              }}
-            />
-          </Field>
+            <strong style={settingsLockedValueStyle}>
+              {user.role || "Probationary Officer"}
+            </strong>
+
+            <span style={settingsLockedHelpStyle}>
+              Access roles are managed through Personnel Management.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section style={settingsPanelStyle}>
+        <div style={settingsSectionHeaderStyle}>
+          <div>
+            <p style={settingsSectionEyebrowStyle}>
+              FTP TOOLS
+            </p>
+
+            <h3 style={settingsSectionTitleStyle}>
+              Training Utilities
+            </h3>
+
+            <p style={settingsSectionTextStyle}>
+              Open the tools linked to your FTP responsibilities.
+            </p>
+          </div>
         </div>
 
-        <section style={{ marginTop: "30px" }}>
-          <h2>FTP Tools</h2>
+        <div style={settingsToolsGridStyle}>
+          <button
+            type="button"
+            onClick={() =>
+              setFtpToolTab(
+                "availability"
+              )
+            }
+            style={{
+              ...settingsToolCardStyle,
+              ...(ftpToolTab ===
+              "availability"
+                ? settingsToolCardActiveStyle
+                : {}),
+            }}
+          >
+            <span style={settingsToolIconStyle}>
+              ◷
+            </span>
 
-          <div style={tabContainerStyle}>
+            <span style={settingsToolTextStyle}>
+              <strong>
+                Server Availability
+              </strong>
+
+              <span>
+                Set your normal GTA:W patrol hours and P1 capacity.
+              </span>
+            </span>
+
+            <span style={settingsToolArrowStyle}>
+              →
+            </span>
+          </button>
+
+          {canImportFTOFile && (
             <button
               type="button"
-              onClick={() => setFtpToolTab("availability")}
-              style={ftpToolTab === "availability" ? activeTabStyle : tabStyle}
+              onClick={() =>
+                setFtpToolTab(
+                  "import"
+                )
+              }
+              style={{
+                ...settingsToolCardStyle,
+                ...(ftpToolTab ===
+                "import"
+                  ? settingsToolCardActiveStyle
+                  : {}),
+              }}
             >
-              Server Availability
-            </button>
+              <span style={settingsToolIconStyle}>
+                ⇧
+              </span>
 
-            <button
-              type="button"
-              onClick={() => setFtpToolTab("import")}
-              style={ftpToolTab === "import" ? activeTabStyle : tabStyle}
-            >
-              FTO BBCode Importer
+              <span style={settingsToolTextStyle}>
+                <strong>
+                  FTO BBCode Importer
+                </strong>
+
+                <span>
+                  Import or replace your historical forum FTO file.
+                </span>
+              </span>
+
+              <span style={settingsToolArrowStyle}>
+                →
+              </span>
             </button>
+          )}
+        </div>
+      </section>
+
+      {ftpToolTab ===
+        "availability" && (
+        <section style={settingsPanelStyle}>
+          <div style={settingsSectionHeaderStyle}>
+            <div>
+              <p style={settingsSectionEyebrowStyle}>
+                AVAILABILITY
+              </p>
+
+              <h3 style={settingsSectionTitleStyle}>
+                Server Availability
+              </h3>
+
+              <p style={settingsSectionTextStyle}>
+                Set the times you are normally available using GTA:W server time.
+              </p>
+            </div>
+
+            <span style={settingsCountBadgeStyle}>
+              {availabilityWindows.filter(
+                (window) =>
+                  window.start_time &&
+                  window.end_time
+              ).length}{" "}
+              window
+              {availabilityWindows.filter(
+                (window) =>
+                  window.start_time &&
+                  window.end_time
+              ).length === 1
+                ? ""
+                : "s"}
+            </span>
           </div>
 
-          {ftpToolTab === "availability" && (
-          <>
-          <h2>Server Availability</h2>
-
-          <p style={mutedStyle}>
-            Tell FTP when you are normally available on GTA:W server time.
-            Multiple availability windows are supported.
-          </p>
-
-          {availabilityWindows.map((window, index) => (
-            <div key={index} style={availabilityBoxStyle}>
-              <label style={labelStyle}>Available From</label>
-              <input
-                type="time"
-                value={window.start_time}
-                onChange={(event) =>
-                  updateAvailabilityWindow(index, "start_time", event.target.value)
-                }
-                style={input}
-              />
-
-              <label style={labelStyle}>Available Until</label>
-              <input
-                type="time"
-                value={window.end_time}
-                onChange={(event) =>
-                  updateAvailabilityWindow(index, "end_time", event.target.value)
-                }
-                style={input}
-              />
-
-              {availabilityWindows.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeAvailabilityWindow(index)}
-                  style={requestButton}
+          <div style={settingsAvailabilityListStyle}>
+            {availabilityWindows.map(
+              (
+                window,
+                index
+              ) => (
+                <div
+                  key={index}
+                  style={settingsAvailabilityRowStyle}
                 >
-                  Remove Window
-                </button>
-              )}
-            </div>
-          ))}
+                  <div style={settingsWindowNumberStyle}>
+                    {index + 1}
+                  </div>
+
+                  <div style={settingsTimeGridStyle}>
+                    <Field label="Available From">
+                      <input
+                        type="time"
+                        value={
+                          window.start_time
+                        }
+                        onChange={(event) =>
+                          updateAvailabilityWindow(
+                            index,
+                            "start_time",
+                            event.target.value
+                          )
+                        }
+                        style={settingsInputStyle}
+                      />
+                    </Field>
+
+                    <div style={settingsTimeArrowStyle}>
+                      →
+                    </div>
+
+                    <Field label="Available Until">
+                      <input
+                        type="time"
+                        value={
+                          window.end_time
+                        }
+                        onChange={(event) =>
+                          updateAvailabilityWindow(
+                            index,
+                            "end_time",
+                            event.target.value
+                          )
+                        }
+                        style={settingsInputStyle}
+                      />
+                    </Field>
+                  </div>
+
+                  {availabilityWindows.length >
+                    1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeAvailabilityWindow(
+                          index
+                        )
+                      }
+                      style={settingsRemoveButtonStyle}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              )
+            )}
+          </div>
 
           <button
             type="button"
-            onClick={addAvailabilityWindow}
-            style={requestButton}
+            onClick={
+              addAvailabilityWindow
+            }
+            style={settingsAddButtonStyle}
           >
             + Add Availability Window
           </button>
@@ -1322,46 +1499,200 @@ export default function Settings({
             "Field Training Manager",
             "Field Training Supervisor",
             "STAFF",
-          ].includes(user.role) && (
-            <>
-              <h2>Probationer Supervision</h2>
+          ].includes(
+            user.role
+          ) && (
+            <div style={settingsSupervisionCardStyle}>
+              <div style={settingsSupervisionHeaderStyle}>
+                <div>
+                  <p style={settingsSectionEyebrowStyle}>
+                    PROBATIONER SUPERVISION
+                  </p>
 
-              <p style={mutedStyle}>
-                Enable this if you are available to take probationary officers.
-              </p>
+                  <h3 style={settingsSubsectionTitleStyle}>
+                    P1 Availability
+                  </h3>
 
-              <select
-                value={availableForP1s ? "yes" : "no"}
-                onChange={(event) =>
-                  setAvailableForP1s(event.target.value === "yes")
-                }
-                style={input}
-              >
-                <option value="no">Not available for P1s</option>
-                <option value="yes">Available for P1s</option>
-              </select>
+                  <p style={settingsSectionTextStyle}>
+                    Control whether you can take probationary officers and how many active P1s you can supervise.
+                  </p>
+                </div>
 
-              <input
-                type="number"
-                min={1}
-                max={4}
-                value={maxP1s}
-                onChange={(event) =>
-                  setMaxP1s(Number(event.target.value))
-                }
-                style={input}
-              />
-            </>
-          )}
-          </>
-          )}
+                <span
+                  style={{
+                    ...settingsAvailabilityStatusStyle,
+                    color:
+                      availableForP1s
+                        ? "#86efac"
+                        : "#cbd5e1",
+                    borderColor:
+                      availableForP1s
+                        ? "#166534"
+                        : "#475569",
+                    backgroundColor:
+                      availableForP1s
+                        ? "rgba(20, 83, 45, 0.3)"
+                        : "#1e293b",
+                  }}
+                >
+                  {availableForP1s
+                    ? "AVAILABLE"
+                    : "UNAVAILABLE"}
+                </span>
+              </div>
 
-          {ftpToolTab === "import" && canImportFTOFile && (
-            <p style={mutedStyle}>
-              Use the FTO BBCode Importer below.
-            </p>
+              <div style={settingsSupervisionGridStyle}>
+                <Field label="Supervision Status">
+                  <select
+                    value={
+                      availableForP1s
+                        ? "yes"
+                        : "no"
+                    }
+                    onChange={(event) =>
+                      setAvailableForP1s(
+                        event.target.value ===
+                          "yes"
+                      )
+                    }
+                    style={settingsInputStyle}
+                  >
+                    <option value="no">
+                      Not available for P1s
+                    </option>
+
+                    <option value="yes">
+                      Available for P1s
+                    </option>
+                  </select>
+                </Field>
+
+                <Field label="Maximum Active P1s">
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={maxP1s}
+                    onChange={(event) =>
+                      setMaxP1s(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    disabled={
+                      !availableForP1s
+                    }
+                    style={{
+                      ...settingsInputStyle,
+                      opacity:
+                        availableForP1s
+                          ? 1
+                          : 0.55,
+                    }}
+                  />
+                </Field>
+              </div>
+            </div>
           )}
         </section>
+      )}
+
+      {ftpToolTab ===
+        "import" &&
+        canImportFTOFile && (
+          <section style={settingsPanelStyle}>
+            <div style={settingsSectionHeaderStyle}>
+              <div>
+                <p style={settingsSectionEyebrowStyle}>
+                  FTO FILE
+                </p>
+
+                <h3 style={settingsSectionTitleStyle}>
+                  Manual FTO File Import
+                </h3>
+
+                <p style={settingsSectionTextStyle}>
+                  Import or replace your existing forum FTO file without leaving Settings.
+                </p>
+              </div>
+
+              <span style={settingsRoleBadgeStyle}>
+                FTO TOOL
+              </span>
+            </div>
+
+            <div style={settingsImportCardStyle}>
+              <div style={settingsImportIconStyle}>
+                ⇧
+              </div>
+
+              <div style={settingsImportTextStyle}>
+                <strong>
+                  Import an existing FTO file
+                </strong>
+
+                <span>
+                  Paste your full BBCode, preview the parsed data and confirm the replacement.
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setImportModalOpen(
+                    true
+                  );
+                  setImportMessage("");
+                }}
+                style={settingsPrimaryButtonStyle}
+              >
+                Open Importer
+              </button>
+            </div>
+          </section>
+        )}
+
+      {user.role ===
+        "Probationary Officer" &&
+        !user.requested_role && (
+          <section style={settingsRequestCardStyle}>
+            <div>
+              <p style={settingsSectionEyebrowStyle}>
+                ROLE REQUEST
+              </p>
+
+              <h3 style={settingsSubsectionTitleStyle}>
+                Become a Field Training Officer
+              </h3>
+
+              <p style={settingsSectionTextStyle}>
+                Submit a request to begin the FTO approval process.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                requestFTO
+              }
+              style={settingsRequestButtonStyle}
+            >
+              Request FTO Status
+            </button>
+          </section>
+        )}
+
+      <section style={settingsSaveBarStyle}>
+        <div>
+          <strong>
+            Save your changes
+          </strong>
+
+          <p style={settingsSaveTextStyle}>
+            Profile, availability and supervision preferences are saved together.
+          </p>
+        </div>
 
         <button
           type="button"
@@ -1370,102 +1701,32 @@ export default function Settings({
             savingProfile
           }
           style={{
-            ...button,
+            ...settingsPrimaryButtonStyle,
+            minWidth: "160px",
             opacity:
               savingProfile
-                ? 0.7
+                ? 0.65
                 : 1,
+            cursor:
+              savingProfile
+                ? "not-allowed"
+                : "pointer",
           }}
         >
           {savingProfile
             ? "Saving..."
             : "Save Changes"}
         </button>
-
-        {user.role ===
-          "Probationary Officer" &&
-          !user.requested_role && (
-            <button
-              type="button"
-              onClick={
-                requestFTO
-              }
-              style={
-                requestButton
-              }
-            >
-              Request Field
-              Training Officer
-              Status
-            </button>
-          )}
-
-        {message && (
-          <p style={messageStyle}>
-            {message}
-          </p>
-        )}
       </section>
-
-      {ftpToolTab === "import" && canImportFTOFile && (
-        <section style={cardStyle}>
-          <div style={sectionHeaderStyle}>
-            <div>
-              <h2
-                style={{
-                  margin:
-                    "0 0 6px",
-                }}
-              >
-                Manual FTO File Import
-              </h2>
-
-              <p style={mutedStyle}>
-                Import or replace your existing
-                forum FTO file without leaving
-                Settings.
-              </p>
-            </div>
-
-            <span style={badgeStyle}>
-              FTO TOOLS
-            </span>
-          </div>
-
-          <div style={importSummaryStyle}>
-            <div>
-              <strong>
-                Import an existing FTO file
-              </strong>
-
-              <p style={importSummaryTextStyle}>
-                Paste your full BBCode, preview
-                the parsed data and confirm the
-                replacement of your imported
-                history.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setImportModalOpen(true);
-                setImportMessage("");
-              }}
-              style={openImportButtonStyle}
-            >
-              Import FTO File
-            </button>
-          </div>
-        </section>
-      )}
 
       {importModalOpen && (
         <div
           style={modalOverlayStyle}
           onClick={() => {
             if (!importing) {
-              setImportModalOpen(false);
+              setImportModalOpen(
+                false
+              );
             }
           }}
         >
@@ -1487,9 +1748,7 @@ export default function Settings({
                 </h2>
 
                 <p style={mutedStyle}>
-                  Paste your complete forum BBCode
-                  below, then preview it before
-                  importing.
+                  Paste your complete forum BBCode below, then preview it before importing.
                 </p>
               </div>
 
@@ -1497,10 +1756,14 @@ export default function Settings({
                 type="button"
                 onClick={() => {
                   if (!importing) {
-                    setImportModalOpen(false);
+                    setImportModalOpen(
+                      false
+                    );
                   }
                 }}
-                disabled={importing}
+                disabled={
+                  importing
+                }
                 style={closeButtonStyle}
               >
                 ×
@@ -1508,10 +1771,7 @@ export default function Settings({
             </div>
 
             <div style={warningStyle}>
-              Importing replaces your existing
-              imported FTO log entries. A final
-              confirmation will appear before
-              anything is changed.
+              Importing replaces your existing imported FTO log entries. A final confirmation will appear before anything is changed.
             </div>
 
             <label style={labelStyle}>
@@ -1534,7 +1794,9 @@ export default function Settings({
                 );
               }}
               placeholder="[font=Arial]Paste your complete FTO file BBCode here...[/font]"
-              disabled={importing}
+              disabled={
+                importing
+              }
               style={textareaStyle}
             />
 
@@ -1544,10 +1806,10 @@ export default function Settings({
                 onClick={
                   previewImport
                 }
-                disabled={importing}
-                style={
-                  previewButtonStyle
+                disabled={
+                  importing
                 }
+                style={previewButtonStyle}
               >
                 Preview Import
               </button>
@@ -1603,10 +1865,14 @@ export default function Settings({
                 type="button"
                 onClick={() => {
                   if (!importing) {
-                    setImportModalOpen(false);
+                    setImportModalOpen(
+                      false
+                    );
                   }
                 }}
-                disabled={importing}
+                disabled={
+                  importing
+                }
                 style={cancelButtonStyle}
               >
                 Cancel
@@ -1833,6 +2099,450 @@ function PreviewDetail({
     </div>
   );
 }
+
+const settingsPageStyle = {
+  display: "grid",
+  gap: "20px",
+  maxWidth: "1180px",
+};
+
+const settingsHeroStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "24px",
+  padding: "28px",
+  background:
+    "linear-gradient(135deg, #111c33 0%, #0f172a 58%, #172554 100%)",
+  border: "1px solid #263655",
+  borderRadius: "16px",
+  boxShadow:
+    "0 18px 48px rgba(2, 6, 23, 0.22)",
+  flexWrap: "wrap" as const,
+};
+
+const settingsEyebrowStyle = {
+  margin: "0 0 8px",
+  color: "#60a5fa",
+  fontSize: "10px",
+  fontWeight: 900,
+  letterSpacing: "0.12em",
+};
+
+const settingsHeroTitleStyle = {
+  margin: "0 0 8px",
+  fontSize: "30px",
+};
+
+const settingsHeroTextStyle = {
+  margin: 0,
+  color: "#94a3b8",
+  lineHeight: 1.55,
+};
+
+const settingsIdentityStyle = {
+  minWidth: "220px",
+  display: "grid",
+  gap: "5px",
+  padding: "15px 17px",
+  backgroundColor:
+    "rgba(15, 23, 42, 0.72)",
+  border: "1px solid #31415f",
+  borderRadius: "11px",
+};
+
+const settingsIdentityLabelStyle = {
+  color: "#64748b",
+  fontSize: "9px",
+  fontWeight: 900,
+  letterSpacing: "0.1em",
+};
+
+const settingsIdentityValueStyle = {
+  color: "#dbeafe",
+  fontSize: "13px",
+};
+
+const settingsPanelStyle = {
+  padding: "24px",
+  background:
+    "linear-gradient(145deg, #172033, #111827)",
+  border: "1px solid #29364c",
+  borderRadius: "15px",
+  boxShadow:
+    "0 14px 38px rgba(2, 6, 23, 0.16)",
+};
+
+const settingsSectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "18px",
+  marginBottom: "22px",
+  flexWrap: "wrap" as const,
+};
+
+const settingsSectionEyebrowStyle = {
+  margin: "0 0 6px",
+  color: "#60a5fa",
+  fontSize: "9px",
+  fontWeight: 900,
+  letterSpacing: "0.11em",
+};
+
+const settingsSectionTitleStyle = {
+  margin: "0 0 6px",
+  fontSize: "20px",
+};
+
+const settingsSubsectionTitleStyle = {
+  margin: "0 0 6px",
+  fontSize: "17px",
+};
+
+const settingsSectionTextStyle = {
+  margin: 0,
+  color: "#7c8ba1",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
+
+const settingsRoleBadgeStyle = {
+  padding: "6px 10px",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.25)",
+  border: "1px solid #2563eb",
+  borderRadius: "999px",
+  fontSize: "10px",
+  fontWeight: 900,
+};
+
+const settingsProfileGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(3, minmax(0, 1fr))",
+  gap: "16px",
+};
+
+const settingsInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  padding: "12px 13px",
+  marginTop: "7px",
+  color: "white",
+  backgroundColor: "#0f172a",
+  border: "1px solid #3b4a63",
+  borderRadius: "9px",
+  fontSize: "14px",
+};
+
+const settingsLockedRoleStyle = {
+  display: "grid",
+  gap: "6px",
+  padding: "13px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+};
+
+const settingsLockedLabelStyle = {
+  color: "#94a3b8",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const settingsLockedValueStyle = {
+  color: "#e2e8f0",
+  fontSize: "15px",
+};
+
+const settingsLockedHelpStyle = {
+  color: "#64748b",
+  fontSize: "10px",
+  lineHeight: 1.4,
+};
+
+const settingsToolsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "14px",
+};
+
+const settingsToolCardStyle = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns:
+    "42px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "13px",
+  padding: "17px",
+  color: "white",
+  textAlign: "left" as const,
+  backgroundColor: "#0f172a",
+  backgroundImage: "none",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "#2c3b52",
+  borderRadius: "12px",
+  cursor: "pointer",
+};
+
+const settingsToolCardActiveStyle = {
+  backgroundColor: "#0f172a",
+  backgroundImage:
+    "linear-gradient(135deg, rgba(30,64,175,.34), #0f172a)",
+  borderColor: "#2563eb",
+  boxShadow:
+    "0 0 0 1px rgba(59,130,246,.14)",
+};
+
+const settingsToolIconStyle = {
+  width: "42px",
+  height: "42px",
+  display: "grid",
+  placeItems: "center",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.28)",
+  border: "1px solid #2563eb",
+  borderRadius: "10px",
+  fontSize: "18px",
+  fontWeight: 900,
+};
+
+const settingsToolTextStyle = {
+  minWidth: 0,
+  display: "grid",
+  gap: "5px",
+};
+
+const settingsToolArrowStyle = {
+  color: "#60a5fa",
+  fontSize: "19px",
+};
+
+const settingsCountBadgeStyle = {
+  padding: "6px 10px",
+  color: "#cbd5e1",
+  backgroundColor: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: "999px",
+  fontSize: "10px",
+  fontWeight: 800,
+};
+
+const settingsAvailabilityListStyle = {
+  display: "grid",
+  gap: "11px",
+};
+
+const settingsAvailabilityRowStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "36px minmax(0, 1fr) auto",
+  alignItems: "end",
+  gap: "14px",
+  padding: "15px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #2c3b52",
+  borderRadius: "11px",
+};
+
+const settingsWindowNumberStyle = {
+  width: "34px",
+  height: "34px",
+  display: "grid",
+  placeItems: "center",
+  alignSelf: "center",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.25)",
+  border: "1px solid #2563eb",
+  borderRadius: "9px",
+  fontSize: "11px",
+  fontWeight: 900,
+};
+
+const settingsTimeGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0, 1fr) 28px minmax(0, 1fr)",
+  alignItems: "end",
+  gap: "10px",
+};
+
+const settingsTimeArrowStyle = {
+  display: "grid",
+  placeItems: "center",
+  height: "42px",
+  color: "#60a5fa",
+  fontSize: "18px",
+};
+
+const settingsRemoveButtonStyle = {
+  padding: "11px 13px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.28)",
+  border: "1px solid #991b1b",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const settingsAddButtonStyle = {
+  marginTop: "13px",
+  padding: "11px 14px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.28)",
+  border: "1px solid #166534",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const settingsSupervisionCardStyle = {
+  marginTop: "20px",
+  padding: "18px",
+  background:
+    "linear-gradient(135deg, rgba(37,99,235,.12), #0f172a)",
+  border: "1px solid #31517c",
+  borderRadius: "12px",
+};
+
+const settingsSupervisionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+  marginBottom: "16px",
+  flexWrap: "wrap" as const,
+};
+
+const settingsSupervisionGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(2, minmax(0, 1fr))",
+  gap: "14px",
+};
+
+const settingsAvailabilityStatusStyle = {
+  padding: "6px 9px",
+  border: "1px solid",
+  borderRadius: "999px",
+  fontSize: "9px",
+  fontWeight: 900,
+};
+
+const settingsImportCardStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "52px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "16px",
+  padding: "18px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #2c3b52",
+  borderRadius: "12px",
+};
+
+const settingsImportIconStyle = {
+  width: "50px",
+  height: "50px",
+  display: "grid",
+  placeItems: "center",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.28)",
+  border: "1px solid #2563eb",
+  borderRadius: "11px",
+  fontSize: "21px",
+  fontWeight: 900,
+};
+
+const settingsImportTextStyle = {
+  display: "grid",
+  gap: "6px",
+};
+
+const settingsPrimaryButtonStyle = {
+  padding: "12px 16px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "1px solid #3b82f6",
+  borderRadius: "9px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const settingsRequestCardStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "20px",
+  padding: "22px",
+  background:
+    "linear-gradient(135deg, rgba(91,33,182,.18), #111827)",
+  border: "1px solid #6d28d9",
+  borderRadius: "14px",
+  flexWrap: "wrap" as const,
+};
+
+const settingsRequestButtonStyle = {
+  padding: "12px 16px",
+  color: "white",
+  backgroundColor: "#7c3aed",
+  border: "1px solid #8b5cf6",
+  borderRadius: "9px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const settingsSaveBarStyle = {
+  position: "sticky" as const,
+  bottom: "16px",
+  zIndex: 20,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "20px",
+  padding: "17px 20px",
+  backgroundColor:
+    "rgba(15, 23, 42, 0.94)",
+  border: "1px solid #334155",
+  borderRadius: "13px",
+  boxShadow:
+    "0 16px 45px rgba(2, 6, 23, 0.38)",
+  backdropFilter: "blur(12px)",
+  flexWrap: "wrap" as const,
+};
+
+const settingsSaveTextStyle = {
+  margin: "5px 0 0",
+  color: "#64748b",
+  fontSize: "11px",
+};
+
+const settingsSuccessStyle = {
+  padding: "13px 15px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.34)",
+  border: "1px solid #166534",
+  borderRadius: "10px",
+};
+
+const settingsErrorStyle = {
+  padding: "13px 15px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.34)",
+  border: "1px solid #991b1b",
+  borderRadius: "10px",
+};
 
 const lockedFieldStyle = {
   padding: "14px",

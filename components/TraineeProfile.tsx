@@ -7,6 +7,7 @@ import {
 
 import BBCodeRecord from "./BBCodeRecord";
 import PPOWERForm from "./PPOWERForm";
+import CommentCardsSection from "./CommentCardsSection";
 import { supabase } from "../lib/supabase";
 import { auditAction } from "../lib/auditAction";
 
@@ -1901,6 +1902,16 @@ const canPromoteToP2 = [
           </div>
         )}
       </div>
+
+      <CommentCardsSection
+        traineeId={
+          trainee.id
+        }
+        traineeName={
+          trainee.name
+        }
+        traineeRank="Police Officer I"
+      />
 
       <BBCodeRecord
         trainee={trainee}
