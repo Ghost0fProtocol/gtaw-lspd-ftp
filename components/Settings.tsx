@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 
 import {
   formatMinutes,
@@ -145,6 +146,26 @@ export default function Settings({
   const [availableForP1s, setAvailableForP1s] = useState(false);
   const [maxP1s, setMaxP1s] = useState(4);
 
+  const [
+    initialAvailabilityWindows,
+    setInitialAvailabilityWindows,
+  ] = useState<
+    Array<{
+      start_time: string;
+      end_time: string;
+    }>
+  >([]);
+
+  const [
+    initialAvailableForP1s,
+    setInitialAvailableForP1s,
+  ] = useState(false);
+
+  const [
+    initialMaxP1s,
+    setInitialMaxP1s,
+  ] = useState(4);
+
   const [ftpToolTab, setFtpToolTab] =
     useState<"availability" | "import">("availability");
 
@@ -173,29 +194,97 @@ export default function Settings({
 
   useEffect(() => {
     async function loadFTPSettings() {
-      const { data: availability } = await supabase
+      const {
+        data: availability,
+        error: availabilityError,
+      } = await supabase
         .from("ftp_availability_windows")
         .select("*")
         .eq("profile_id", user.id);
 
-      if (availability?.length) {
-        setAvailabilityWindows(
-          availability.map((item) => ({
-            start_time: item.start_time.slice(0, 5),
-            end_time: item.end_time.slice(0, 5),
-          }))
+      if (availabilityError) {
+        console.error(
+          "LOAD AVAILABILITY ERROR",
+          availabilityError
         );
       }
 
-      const { data: supervision } = await supabase
+      const loadedWindows =
+        availability?.length
+          ? availability.map((item) => ({
+              start_time:
+                item.start_time.slice(0, 5),
+              end_time:
+                item.end_time.slice(0, 5),
+            }))
+          : [
+              {
+                start_time: "",
+                end_time: "",
+              },
+            ];
+
+      setAvailabilityWindows(
+        loadedWindows
+      );
+
+      setInitialAvailabilityWindows(
+        loadedWindows.filter(
+          (window) =>
+            window.start_time &&
+            window.end_time
+        )
+      );
+
+      const {
+        data: supervision,
+        error: supervisionError,
+      } = await supabase
         .from("ftp_supervision_preferences")
         .select("*")
         .eq("profile_id", user.id)
         .maybeSingle();
 
+      if (supervisionError) {
+        console.error(
+          "LOAD SUPERVISION SETTINGS ERROR",
+          supervisionError
+        );
+      }
+
       if (supervision) {
-        setAvailableForP1s(supervision.available_for_p1s);
-        setMaxP1s(supervision.max_active_p1s ?? 4);
+        const loadedAvailable =
+          Boolean(
+            supervision.available_for_p1s
+          );
+
+        const loadedMaximum =
+          supervision.max_active_p1s ??
+          4;
+
+        setAvailableForP1s(
+          loadedAvailable
+        );
+
+        setMaxP1s(
+          loadedMaximum
+        );
+
+        setInitialAvailableForP1s(
+          loadedAvailable
+        );
+
+        setInitialMaxP1s(
+          loadedMaximum
+        );
+      } else {
+        setInitialAvailableForP1s(
+          false
+        );
+
+        setInitialMaxP1s(
+          4
+        );
       }
     }
 
@@ -227,97 +316,310 @@ export default function Settings({
     setMessage("");
     setSavingProfile(true);
 
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("profiles")
-        .update({
-          name:
-            name.trim(),
-          badge_number:
-            badge.trim(),
-          work_number:
-            workNumber.trim(),
-          rank:
-            isProbationaryOfficer
-              ? "Police Officer I"
-              : rank,
-          division:
-            isProbationaryOfficer
-              ? "Mission Row Division"
-              : division,
-        })
-        .eq(
-          "id",
-          user.id
-        )
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      const validWindows = availabilityWindows.filter(
-        (window) => window.start_time && window.end_time
+    const validWindows =
+      availabilityWindows.filter(
+        (window) =>
+          window.start_time &&
+          window.end_time
       );
 
-      const { error: deleteError } = await supabase
-        .from("ftp_availability_windows")
-        .delete()
-        .eq("profile_id", user.id);
+    const nextRank =
+      isProbationaryOfficer
+        ? "Police Officer I"
+        : rank;
 
-      if (deleteError) {
-        throw deleteError;
-      }
+    const nextDivision =
+      isProbationaryOfficer
+        ? "Mission Row Division"
+        : division;
 
-      if (validWindows.length) {
-        const { data: savedWindows, error: insertError } = await supabase
-          .from("ftp_availability_windows")
-          .insert(
-            validWindows.map((window) => ({
-              profile_id: user.id,
-              start_time: window.start_time,
-              end_time: window.end_time,
-            }))
-          )
-          .select();
+    const cappedMaxP1s =
+      Math.min(
+        Math.max(maxP1s, 1),
+        4
+      );
 
-        if (insertError) {
-          throw insertError;
-        }
-
-        setAvailabilityWindows(
-          (savedWindows ?? []).map((window) => ({
-            start_time: window.start_time.slice(0, 5),
-            end_time: window.end_time.slice(0, 5),
-          }))
-        );
-      } else {
-        setAvailabilityWindows([{ start_time: "", end_time: "" }]);
-      }
-
-      if ([
+    const supervisionEnabled =
+      [
         "Field Training Manager",
         "Field Training Supervisor",
         "STAFF",
-      ].includes(user.role)) {
-        await supabase
-          .from("ftp_supervision_preferences")
-          .upsert({
-            profile_id: user.id,
-            available_for_p1s: availableForP1s,
-            max_active_p1s: Math.min(maxP1s, 4),
-          });
-      }
+      ].includes(user.role);
+
+    try {
+      const saveResult =
+        await auditAction({
+          user,
+
+          action:
+            "UPDATE_SETTINGS",
+
+          category:
+            "Settings",
+
+          entityType:
+            "profile",
+
+          entityId:
+            user.id,
+
+          targetName:
+            name.trim() ||
+            user.name ||
+            "Unknown Officer",
+
+          oldData: {
+            profile: {
+              name:
+                user.name ??
+                null,
+              badge_number:
+                user.badge_number ??
+                null,
+              work_number:
+                user.work_number ??
+                null,
+              rank:
+                user.rank ??
+                null,
+              division:
+                user.division ??
+                null,
+            },
+
+            availability_windows:
+              initialAvailabilityWindows,
+
+            supervision_preferences:
+              supervisionEnabled
+                ? {
+                    available_for_p1s:
+                      initialAvailableForP1s,
+
+                    max_active_p1s:
+                      initialMaxP1s,
+                  }
+                : null,
+          },
+
+          newData: {
+            profile: {
+              name:
+                name.trim(),
+
+              badge_number:
+                badge.trim(),
+
+              work_number:
+                workNumber.trim(),
+
+              rank:
+                nextRank,
+
+              division:
+                nextDivision,
+            },
+
+            availability_windows:
+              validWindows,
+
+            supervision_preferences:
+              supervisionEnabled
+                ? {
+                    available_for_p1s:
+                      availableForP1s,
+
+                    max_active_p1s:
+                      cappedMaxP1s,
+                  }
+                : null,
+          },
+
+          execute: async () => {
+            const {
+              data:
+                updatedProfile,
+              error:
+                profileError,
+            } = await supabase
+              .from("profiles")
+              .update({
+                name:
+                  name.trim(),
+
+                badge_number:
+                  badge.trim(),
+
+                work_number:
+                  workNumber.trim(),
+
+                rank:
+                  nextRank,
+
+                division:
+                  nextDivision,
+              })
+              .eq(
+                "id",
+                user.id
+              )
+              .select()
+              .single();
+
+            if (profileError) {
+              throw profileError;
+            }
+
+            const {
+              error:
+                deleteError,
+            } = await supabase
+              .from(
+                "ftp_availability_windows"
+              )
+              .delete()
+              .eq(
+                "profile_id",
+                user.id
+              );
+
+            if (deleteError) {
+              throw deleteError;
+            }
+
+            let savedWindows:
+              Array<{
+                start_time: string;
+                end_time: string;
+              }> = [];
+
+            if (
+              validWindows.length
+            ) {
+              const {
+                data:
+                  insertedWindows,
+                error:
+                  insertError,
+              } = await supabase
+                .from(
+                  "ftp_availability_windows"
+                )
+                .insert(
+                  validWindows.map(
+                    (window) => ({
+                      profile_id:
+                        user.id,
+
+                      start_time:
+                        window.start_time,
+
+                      end_time:
+                        window.end_time,
+                    })
+                  )
+                )
+                .select();
+
+              if (insertError) {
+                throw insertError;
+              }
+
+              savedWindows =
+                (
+                  insertedWindows ??
+                  []
+                ).map(
+                  (window) => ({
+                    start_time:
+                      window.start_time.slice(
+                        0,
+                        5
+                      ),
+
+                    end_time:
+                      window.end_time.slice(
+                        0,
+                        5
+                      ),
+                  })
+                );
+            }
+
+            if (
+              supervisionEnabled
+            ) {
+              const {
+                error:
+                  supervisionError,
+              } = await supabase
+                .from(
+                  "ftp_supervision_preferences"
+                )
+                .upsert({
+                  profile_id:
+                    user.id,
+
+                  available_for_p1s:
+                    availableForP1s,
+
+                  max_active_p1s:
+                    cappedMaxP1s,
+                });
+
+              if (
+                supervisionError
+              ) {
+                throw supervisionError;
+              }
+            }
+
+            return {
+              data:
+                updatedProfile,
+
+              savedWindows,
+            };
+          },
+        });
+
+      const nextWindows =
+        saveResult.savedWindows.length
+          ? saveResult.savedWindows
+          : [
+              {
+                start_time: "",
+                end_time: "",
+              },
+            ];
+
+      setAvailabilityWindows(
+        nextWindows
+      );
+
+      setInitialAvailabilityWindows(
+        saveResult.savedWindows
+      );
+
+      setInitialAvailableForP1s(
+        availableForP1s
+      );
+
+      setInitialMaxP1s(
+        cappedMaxP1s
+      );
+
+      setMaxP1s(
+        cappedMaxP1s
+      );
 
       setMessage(
         "✅ Profile updated successfully."
       );
 
-      onUpdate(data);
+      onUpdate(
+        saveResult.data
+      );
     } catch (error) {
       console.error(
         "PROFILE UPDATE ERROR",
@@ -338,24 +640,73 @@ export default function Settings({
     setMessage("");
 
     try {
-      const {
-        error,
-      } = await supabase
-        .from("profiles")
-        .update({
+      await auditAction({
+        user,
+
+        action:
+          "SUBMIT_FTO_REQUEST",
+
+        category:
+          "Permissions",
+
+        entityType:
+          "profile",
+
+        entityId:
+          user.id,
+
+        targetName:
+          user.name ??
+          "Unknown Officer",
+
+        oldData: {
+          requested_role:
+            user.requested_role ??
+            null,
+
+          role_request_status:
+            user.role_request_status ??
+            null,
+        },
+
+        newData: {
           requested_role:
             "Field Training Officer",
+
           role_request_status:
             "pending",
-        })
-        .eq(
-          "id",
-          user.id
-        );
+        },
 
-      if (error) {
-        throw error;
-      }
+        execute: async () => {
+          const {
+            error,
+          } = await supabase
+            .from("profiles")
+            .update({
+              requested_role:
+                "Field Training Officer",
+
+              role_request_status:
+                "pending",
+            })
+            .eq(
+              "id",
+              user.id
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          return {
+            requested_role:
+              "Field Training Officer",
+
+            role_request_status:
+              "pending",
+          };
+        },
+      });
 
       setMessage(
         "✅ Field Training Officer request submitted."
@@ -458,132 +809,275 @@ export default function Settings({
     setImportMessage("");
 
     try {
-      const now =
-        new Date().toISOString();
-
       const {
-        data: ftoFile,
+        data:
+          existingFTOFile,
         error:
-          ftoFileError,
+          existingFileError,
       } = await supabase
         .from("fto_files")
-        .upsert(
-          {
-            profile_id:
-              user.id,
-            division:
-              parsedPreview.division ||
-              null,
-            induction_date:
-              parsedPreview.inductionDate,
-            final_evaluation_date:
-              parsedPreview.finalEvaluationDate,
-            probationary_passed_date:
-              parsedPreview.probationaryPassedDate,
-            total_instruction_minutes:
-              parsedPreview.resolvedTotalInstructionMinutes,
-            original_bbcode:
-              importBBCode.trim(),
-            updated_at:
-              now,
-          },
-          {
-            onConflict:
-              "profile_id",
-          }
-        )
-        .select("id")
-        .single();
-
-      if (ftoFileError) {
-        throw ftoFileError;
-      }
-
-      const {
-        error:
-          deleteError,
-      } = await supabase
-        .from(
-          "fto_log_entries"
-        )
-        .delete()
+        .select(`
+          id,
+          division,
+          induction_date,
+          final_evaluation_date,
+          probationary_passed_date,
+          total_instruction_minutes
+        `)
         .eq(
-          "fto_file_id",
-          ftoFile.id
-        );
+          "profile_id",
+          user.id
+        )
+        .maybeSingle();
 
-      if (deleteError) {
-        throw deleteError;
+      if (
+        existingFileError
+      ) {
+        throw existingFileError;
       }
+
+      const action =
+        existingFTOFile
+          ? "REPLACE_FTO_FILE"
+          : "IMPORT_FTO_FILE";
 
       const rows =
         parsedPreview.entries.map(
           (entry) => ({
-            fto_file_id:
-              ftoFile.id,
             entry_date:
               entry.date,
+
             duration_minutes:
               entry.durationMinutes,
+
             subject_name:
               entry.subjectName,
+
             entry_type:
               entry.entryType,
+
             source_url:
               entry.sourceUrl,
+
             source_month:
               entry.sourceMonth,
           })
         );
 
-      if (
-        rows.length > 0
-      ) {
-        const {
-          error:
-            insertError,
-        } = await supabase
-          .from(
-            "fto_log_entries"
-          )
-          .insert(rows);
+      const {
+        updatedProfile,
+      } = await auditAction({
+        user,
 
-        if (insertError) {
-          throw insertError;
-        }
-      }
+        action,
 
-      if (
-        divisions.includes(
-          parsedPreview.division
-        )
-      ) {
-        const {
-          data:
+        category:
+          "Imports",
+
+        entityType:
+          "fto_file",
+
+        entityId:
+          existingFTOFile?.id ??
+          undefined,
+
+        targetName:
+          user.name ??
+          parsedPreview.officerName ??
+          "Unknown Officer",
+
+        oldData: {
+          existing_file:
+            existingFTOFile ??
+            null,
+
+          profile_division:
+            user.division ??
+            null,
+        },
+
+        newData: {
+          import_mode:
+            existingFTOFile
+              ? "replace"
+              : "create",
+
+          parsed_officer_name:
+            parsedPreview.officerName,
+
+          parsed_serial_number:
+            parsedPreview.serialNumber,
+
+          division:
+            parsedPreview.division ||
+            null,
+
+          induction_date:
+            parsedPreview.inductionDate,
+
+          final_evaluation_date:
+            parsedPreview.finalEvaluationDate,
+
+          probationary_passed_date:
+            parsedPreview.probationaryPassedDate,
+
+          total_instruction_minutes:
+            parsedPreview.resolvedTotalInstructionMinutes,
+
+          entry_count:
+            rows.length,
+
+          monthly_section_count:
+            parsedPreview.monthlyLogs.length,
+
+          parser_repairs:
+            parsedPreview.repairs,
+
+          parser_warnings:
+            parsedPreview.warnings,
+        },
+
+        execute: async () => {
+          const now =
+            new Date().toISOString();
+
+          const {
+            data:
+              ftoFile,
+            error:
+              ftoFileError,
+          } = await supabase
+            .from("fto_files")
+            .upsert(
+              {
+                profile_id:
+                  user.id,
+
+                division:
+                  parsedPreview.division ||
+                  null,
+
+                induction_date:
+                  parsedPreview.inductionDate,
+
+                final_evaluation_date:
+                  parsedPreview.finalEvaluationDate,
+
+                probationary_passed_date:
+                  parsedPreview.probationaryPassedDate,
+
+                total_instruction_minutes:
+                  parsedPreview.resolvedTotalInstructionMinutes,
+
+                original_bbcode:
+                  importBBCode.trim(),
+
+                updated_at:
+                  now,
+              },
+              {
+                onConflict:
+                  "profile_id",
+              }
+            )
+            .select("id")
+            .single();
+
+          if (ftoFileError) {
+            throw ftoFileError;
+          }
+
+          const {
+            error:
+              deleteError,
+          } = await supabase
+            .from(
+              "fto_log_entries"
+            )
+            .delete()
+            .eq(
+              "fto_file_id",
+              ftoFile.id
+            );
+
+          if (deleteError) {
+            throw deleteError;
+          }
+
+          if (
+            rows.length > 0
+          ) {
+            const {
+              error:
+                insertError,
+            } = await supabase
+              .from(
+                "fto_log_entries"
+              )
+              .insert(
+                rows.map(
+                  (row) => ({
+                    ...row,
+
+                    fto_file_id:
+                      ftoFile.id,
+                  })
+                )
+              );
+
+            if (insertError) {
+              throw insertError;
+            }
+          }
+
+          let updatedProfile:
+            any = null;
+
+          if (
+            divisions.includes(
+              parsedPreview.division
+            )
+          ) {
+            const {
+              data:
+                profileData,
+              error:
+                profileDivisionError,
+            } = await supabase
+              .from("profiles")
+              .update({
+                division:
+                  parsedPreview.division,
+              })
+              .eq(
+                "id",
+                user.id
+              )
+              .select()
+              .single();
+
+            if (
+              profileDivisionError
+            ) {
+              throw profileDivisionError;
+            }
+
+            updatedProfile =
+              profileData;
+          }
+
+          return {
+            ftoFile,
             updatedProfile,
-          error:
-            profileDivisionError,
-        } = await supabase
-          .from("profiles")
-          .update({
-            division:
-              parsedPreview.division,
-          })
-          .eq(
-            "id",
-            user.id
-          )
-          .select()
-          .single();
+          };
+        },
+      });
 
-        if (
-          profileDivisionError
-        ) {
-          throw profileDivisionError;
-        }
-
+      if (
+        updatedProfile
+      ) {
         setDivision(
-          parsedPreview.division
+          updatedProfile.division
         );
 
         onUpdate(

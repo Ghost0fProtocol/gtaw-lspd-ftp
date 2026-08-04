@@ -14,15 +14,72 @@ type Props = {
   role: string;
 };
 
+const managementRoles = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
+
 export default function Sidebar({
   activePage,
   onPageChange,
   role,
 }: Props) {
-  const menuItems =
+  const baseMenuItems =
     getSidebarMenuItems(
       role
     );
+
+  const menuItems = [
+    ...baseMenuItems,
+  ];
+
+  if (
+    managementRoles.includes(
+      role
+    ) &&
+    !menuItems.includes(
+      "FTO Records"
+    )
+  ) {
+    const myFTORecordIndex =
+      menuItems.findIndex(
+        (item) =>
+          item ===
+            "My FTO File" ||
+          item ===
+            "My FTO Record"
+      );
+
+    if (
+      myFTORecordIndex >= 0
+    ) {
+      menuItems.splice(
+        myFTORecordIndex + 1,
+        0,
+        "FTO Records"
+      );
+    } else {
+      menuItems.push(
+        "FTO Records"
+      );
+    }
+  }
+
+  if (
+    managementRoles.includes(
+      role
+    ) &&
+    !menuItems.includes(
+      "Audit Centre"
+    )
+  ) {
+    menuItems.push(
+      "Audit Centre"
+    );
+  }
 
   return (
     <aside style={sidebarStyle}>

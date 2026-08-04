@@ -26,10 +26,12 @@ import Settings from "../components/Settings";
 import MyNotebook from "../components/MyNotebook";
 import RoleRequests from "../components/RoleRequests";
 import MyFTOFile from "../components/MyFTOFile";
+import FTORecords from "../components/FTORecords";
 import PersonnelManagement from "../components/PersonnelManagement";
 import TrainingCalendar from "../components/TrainingCalendar";
 import FieldTrainingManagementDashboard from "../components/FieldTrainingManagementDashboard";
 import BatchManagement from "../components/BatchManagement";
+import AuditLog from "../components/AuditLog";
 
 type InitialRole =
   | "Probationary Officer"
@@ -676,6 +678,13 @@ export default function Home() {
           />
         );
 
+      case "FTO Records":
+        return (
+          <FTORecords
+            user={user}
+          />
+        );
+
       case "Personnel Management":
         return (
           <PersonnelManagement
@@ -718,6 +727,13 @@ export default function Home() {
             onUpdate={
               setUser
             }
+          />
+        );
+
+      case "Audit Centre":
+        return (
+          <AuditLog
+            user={user}
           />
         );
 

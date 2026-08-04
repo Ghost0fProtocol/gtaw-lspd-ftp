@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 
 type Props = {
   user: any;
@@ -430,24 +431,70 @@ export default function BatchManagement({ user }: Props) {
 
     try {
       if (selectedBatch) {
-        const { data, error: updateError } = await supabase
-          .from("ftp_batches")
-          .update(payload)
-          .eq("id", selectedBatch.id)
-          .select()
-          .single();
+        const oldData = batchAuditSnapshot(selectedBatch);
 
-        if (updateError) throw updateError;
+        const { data } =
+          await auditAction({
+            user,
+
+            action: "UPDATE_BATCH",
+            category: "Intakes",
+
+            entityType: "ftp_batch",
+            entityId: selectedBatch.id,
+            targetName: payload.name,
+
+            oldData,
+            newData: payload,
+
+            execute: async () => {
+              const result = await supabase
+                .from("ftp_batches")
+                .update(payload)
+                .eq("id", selectedBatch.id)
+                .select()
+                .single();
+
+              if (result.error) {
+                throw result.error;
+              }
+
+              return result;
+            },
+          });
+
         setSuccess("Batch details updated.");
         await loadData(data.id);
       } else {
-        const { data, error: insertError } = await supabase
-          .from("ftp_batches")
-          .insert({ ...payload, created_by: user?.id ?? null })
-          .select()
-          .single();
+        const { data } =
+          await auditAction({
+            user,
 
-        if (insertError) throw insertError;
+            action: "CREATE_BATCH",
+            category: "Intakes",
+
+            entityType: "ftp_batch",
+            targetName: form.name.trim(),
+
+            newData: payload,
+
+            execute: async () => {
+              const result = await supabase
+                .from("ftp_batches")
+                .insert({
+                  ...payload,
+                  created_by: user?.id ?? null,
+                })
+                .select()
+                .single();
+
+              if (result.error) {
+                throw result.error;
+              }
+
+              return result;
+            },
+          });
         setSuccess("New FTP intake created.");
         setActiveTab("overview");
         await loadData(data.id);
@@ -472,17 +519,57 @@ export default function BatchManagement({ user }: Props) {
     clearMessages();
 
     try {
+      const affectedTrainees = trainees
+        .filter((trainee) => trainee.batch_id === selectedBatch.id)
+        .map((trainee) => ({
+          trainee_id: trainee.id,
+          trainee_name: trainee.profile?.name ?? "Unnamed probationer",
+          assigned_ftm_id: trainee.assigned_ftm,
+          assigned_ftm_name:
+            ftms.find((profile) => profile.id === trainee.assigned_ftm)?.name ??
+            null,
+        }));
+
       const { error: traineeError } = await supabase
         .from("trainees")
-        .update({ batch_id: null, assigned_ftm: null })
+        .update({
+          batch_id: null,
+          assigned_ftm: null,
+        })
         .eq("batch_id", selectedBatch.id);
-      if (traineeError) throw traineeError;
 
-      const { error: deleteError } = await supabase
-        .from("ftp_batches")
-        .delete()
-        .eq("id", selectedBatch.id);
-      if (deleteError) throw deleteError;
+      if (traineeError) {
+        throw traineeError;
+      }
+
+      await auditAction({
+        user,
+
+        action: "DELETE_BATCH",
+        category: "Intakes",
+
+        entityType: "ftp_batch",
+        entityId: selectedBatch.id,
+        targetName: selectedBatch.name,
+
+        oldData: {
+          ...batchAuditSnapshot(selectedBatch),
+          removed_probationers: affectedTrainees,
+        },
+
+        execute: async () => {
+          const result = await supabase
+            .from("ftp_batches")
+            .delete()
+            .eq("id", selectedBatch.id);
+
+          if (result.error) {
+            throw result.error;
+          }
+
+          return result;
+        },
+      });
 
       setSelectedBatchId("");
       setForm(EMPTY_FORM);
@@ -507,7 +594,7 @@ export default function BatchManagement({ user }: Props) {
       return;
     }
 
-    if (selected?.atCapacity && !capacityOverride) {
+    if (selected.atCapacity && !capacityOverride) {
       setError("This FTM is at capacity. Enable the manual override to continue.");
       return;
     }
@@ -515,7 +602,11 @@ export default function BatchManagement({ user }: Props) {
     setSaving(true);
     clearMessages();
 
+    const trainee = ftmAssignmentTarget.trainee;
     const isAdding = ftmAssignmentTarget.mode === "add";
+    const previousFtm =
+      ftms.find((profile) => profile.id === trainee.assigned_ftm) ?? null;
+
     const payload: Record<string, string | null> = {
       assigned_ftm: selectedFtmId,
     };
@@ -526,12 +617,66 @@ export default function BatchManagement({ user }: Props) {
     }
 
     try {
-      const { error: updateError } = await supabase
-        .from("trainees")
-        .update(payload)
-        .eq("id", ftmAssignmentTarget.trainee.id);
+      await auditAction({
+        user,
 
-      if (updateError) throw updateError;
+        action: isAdding
+          ? "ADD_P1_TO_BATCH"
+          : trainee.assigned_ftm
+            ? "CHANGE_FTM"
+            : "ASSIGN_FTM",
+
+        category: "Probationers",
+
+        entityType: "trainee",
+        entityId: trainee.id,
+        targetName: trainee.profile?.name ?? "Unnamed probationer",
+
+        oldData: isAdding
+          ? {
+              batch_id: trainee.batch_id,
+              batch_name: null,
+              assigned_ftm_id: trainee.assigned_ftm,
+              assigned_ftm_name: previousFtm?.name ?? null,
+              start_date: trainee.start_date,
+            }
+          : {
+              batch_id: selectedBatch.id,
+              batch_name: selectedBatch.name,
+              assigned_ftm_id: trainee.assigned_ftm,
+              assigned_ftm_name: previousFtm?.name ?? null,
+            },
+
+        newData: {
+          batch_id: selectedBatch.id,
+          batch_name: selectedBatch.name,
+          assigned_ftm_id: selected.profile.id,
+          assigned_ftm_name: selected.profile.name,
+          start_date: isAdding
+            ? selectedBatch.induction_date
+            : trainee.start_date,
+          capacity_override_used:
+            selected.atCapacity && capacityOverride,
+          selected_ftm_current_load: selected.currentLoad,
+          selected_ftm_capacity: selected.capacity,
+          selected_ftm_accepting_p1s: selected.accepting,
+          suitability_score: selected.score,
+          suitability_band: selected.band,
+        },
+
+        execute: async () => {
+          const result = await supabase
+            .from("trainees")
+            .update(payload)
+            .eq("id", trainee.id);
+
+          if (result.error) {
+            throw result.error;
+          }
+
+          return result;
+        },
+      });
 
       setSuccess(
         isAdding
@@ -542,7 +687,10 @@ export default function BatchManagement({ user }: Props) {
       closeFtmAssignment();
       await loadData(selectedBatch.id);
     } catch (assignmentError: any) {
-      setError(assignmentError?.message ?? "The FTM assignment could not be saved.");
+      setError(
+        assignmentError?.message ??
+          "The FTM assignment could not be saved."
+      );
     } finally {
       setSaving(false);
     }
@@ -559,20 +707,60 @@ export default function BatchManagement({ user }: Props) {
     setSaving(true);
     clearMessages();
 
-    try {
-      const { error: updateError } = await supabase
-        .from("trainees")
-        .update({
-          batch_id: null,
-          assigned_ftm: null,
-        })
-        .eq("id", trainee.id);
+    const previousFtm =
+      ftms.find((profile) => profile.id === trainee.assigned_ftm) ?? null;
 
-      if (updateError) throw updateError;
+    try {
+      await auditAction({
+        user,
+
+        action: "REMOVE_P1_FROM_BATCH",
+        category: "Probationers",
+
+        entityType: "trainee",
+        entityId: trainee.id,
+        targetName: trainee.profile?.name ?? "Unnamed probationer",
+
+        oldData: {
+          batch_id: selectedBatch.id,
+          batch_name: selectedBatch.name,
+          assigned_ftm_id: trainee.assigned_ftm,
+          assigned_ftm_name: previousFtm?.name ?? null,
+          start_date: trainee.start_date,
+        },
+
+        newData: {
+          batch_id: null,
+          batch_name: null,
+          assigned_ftm_id: null,
+          assigned_ftm_name: null,
+          start_date: trainee.start_date,
+        },
+
+        execute: async () => {
+          const result = await supabase
+            .from("trainees")
+            .update({
+              batch_id: null,
+              assigned_ftm: null,
+            })
+            .eq("id", trainee.id);
+
+          if (result.error) {
+            throw result.error;
+          }
+
+          return result;
+        },
+      });
+
       setSuccess("Probationer removed from the intake.");
       await loadData(selectedBatch.id);
     } catch (removeError: any) {
-      setError(removeError?.message ?? "The probationer could not be removed.");
+      setError(
+        removeError?.message ??
+          "The probationer could not be removed."
+      );
     } finally {
       setSaving(false);
     }
@@ -1641,6 +1829,20 @@ function formatDuration(minutes: number) {
   if (!hours) return `${remainder}m`;
   if (!remainder) return `${hours}h`;
   return `${hours}h ${remainder}m`;
+}
+
+function batchAuditSnapshot(batch: Batch) {
+  return {
+    name: batch.name,
+    induction_date: batch.induction_date,
+    minimum_upgrade_date: batch.minimum_upgrade_date ?? null,
+    fpp_deadline: batch.fpp_deadline ?? null,
+    final_completion_deadline:
+      batch.final_completion_deadline ?? null,
+    intake_size: batch.intake_size,
+    status: batch.status,
+    notes: batch.notes,
+  };
 }
 
 function batchToForm(batch: Batch): BatchForm {

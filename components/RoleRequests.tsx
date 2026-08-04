@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 import {
   formatMinutes,
   parseFTOFile,
@@ -362,9 +363,7 @@ export default function RoleRequests({
       | "rejected"
       | "changes_requested"
   ) {
-    if (
-      !selectedRequest
-    ) {
+    if (!selectedRequest) {
       return;
     }
 
@@ -399,81 +398,244 @@ export default function RoleRequests({
       const reviewedAt =
         new Date().toISOString();
 
-      if (
+      const officerName =
+        selectedRequest.profile?.name ??
+        "Unknown Officer";
+
+      const previousRole =
+        selectedRequest.profile?.role ??
+        null;
+
+      const previousRequestStatus =
+        selectedRequest.status;
+
+      const existingFileResult =
         outcome === "approved"
-      ) {
-        await importApprovedFTOFile(
-          selectedRequest
-        );
+          ? await supabase
+              .from("fto_files")
+              .select(`
+                id,
+                division,
+                induction_date,
+                final_evaluation_date,
+                probationary_passed_date,
+                total_instruction_minutes
+              `)
+              .eq(
+                "profile_id",
+                selectedRequest.profile_id
+              )
+              .maybeSingle()
+          : {
+              data: null,
+              error: null,
+            };
+
+      if (existingFileResult.error) {
+        throw existingFileResult.error;
       }
 
-      const {
-        error: requestUpdateError,
-      } = await supabase
-        .from(
-          "fto_import_requests"
-        )
-        .update({
-          status: outcome,
-          reviewed_by:
-            user.id,
-          reviewed_at:
-            reviewedAt,
+      const parsed =
+        outcome === "approved"
+          ? parseFTOFile(
+              selectedRequest.original_bbcode
+            )
+          : null;
+
+      const action =
+        outcome === "approved"
+          ? "APPROVE_ROLE_REQUEST"
+          : outcome === "rejected"
+            ? "REJECT_ROLE_REQUEST"
+            : "REQUEST_CHANGES";
+
+      await auditAction({
+        user,
+
+        action,
+        category: "Permissions",
+
+        entityType:
+          "fto_import_request",
+
+        entityId:
+          selectedRequest.id,
+
+        targetName:
+          officerName,
+
+        oldData: {
+          request_status:
+            previousRequestStatus,
+
+          profile_role:
+            previousRole,
+
+          requested_role:
+            selectedRequest.profile
+              ?.requested_role ??
+            null,
+
+          role_request_status:
+            selectedRequest.profile
+              ?.role_request_status ??
+            null,
+
+          existing_fto_file:
+            existingFileResult.data ??
+            null,
+        },
+
+        newData: {
+          request_status:
+            outcome,
+
+          profile_role:
+            outcome === "approved"
+              ? "Field Training Officer"
+              : previousRole,
+
+          requested_role:
+            "Field Training Officer",
+
+          role_request_status:
+            outcome,
+
           reviewer_notes:
             reviewerNotes.trim() ||
             null,
-          updated_at:
+
+          reviewed_at:
             reviewedAt,
-        })
-        .eq(
-          "id",
-          selectedRequest.id
-        );
 
-      if (
-        requestUpdateError
-      ) {
-        throw requestUpdateError;
-      }
+          reviewed_by:
+            user.id,
 
-      const profileUpdates =
-        outcome === "approved"
-          ? {
-              role:
-                "Field Training Officer",
-              requested_role:
-                "Field Training Officer",
-              role_request_status:
-                "approved",
-            }
-          : {
-              requested_role:
-                "Field Training Officer",
-              role_request_status:
-                outcome,
-            };
+          imported_fto_file:
+            parsed
+              ? {
+                  import_mode:
+                    existingFileResult.data
+                      ? "replace"
+                      : "create",
 
-      const {
-        error: profileUpdateError,
-      } = await supabase
-        .from("profiles")
-        .update(
-          profileUpdates
-        )
-        .eq(
-          "id",
-          selectedRequest.profile_id
-        );
+                  division:
+                    parsed.division ||
+                    null,
 
-      if (
-        profileUpdateError
-      ) {
-        throw profileUpdateError;
-      }
+                  induction_date:
+                    parsed.inductionDate,
 
-      const officerName =
-        selectedRequest.profile?.name ??
-        "The officer";
+                  final_evaluation_date:
+                    parsed.finalEvaluationDate,
+
+                  probationary_passed_date:
+                    parsed.probationaryPassedDate,
+
+                  total_instruction_minutes:
+                    parsed.resolvedTotalInstructionMinutes,
+
+                  entry_count:
+                    parsed.entries.length,
+
+                  monthly_section_count:
+                    parsed.monthlyLogs.length,
+
+                  parser_repairs:
+                    parsed.repairs,
+
+                  parser_warnings:
+                    parsed.warnings,
+                }
+              : null,
+        },
+
+        reason:
+          reviewerNotes.trim() ||
+          undefined,
+
+        execute: async () => {
+          if (
+            outcome === "approved"
+          ) {
+            await importApprovedFTOFile(
+              selectedRequest
+            );
+          }
+
+          const {
+            error:
+              requestUpdateError,
+          } = await supabase
+            .from(
+              "fto_import_requests"
+            )
+            .update({
+              status: outcome,
+              reviewed_by:
+                user.id,
+              reviewed_at:
+                reviewedAt,
+              reviewer_notes:
+                reviewerNotes.trim() ||
+                null,
+              updated_at:
+                reviewedAt,
+            })
+            .eq(
+              "id",
+              selectedRequest.id
+            );
+
+          if (
+            requestUpdateError
+          ) {
+            throw requestUpdateError;
+          }
+
+          const profileUpdates =
+            outcome === "approved"
+              ? {
+                  role:
+                    "Field Training Officer",
+                  requested_role:
+                    "Field Training Officer",
+                  role_request_status:
+                    "approved",
+                }
+              : {
+                  requested_role:
+                    "Field Training Officer",
+                  role_request_status:
+                    outcome,
+                };
+
+          const {
+            error:
+              profileUpdateError,
+          } = await supabase
+            .from("profiles")
+            .update(
+              profileUpdates
+            )
+            .eq(
+              "id",
+              selectedRequest.profile_id
+            );
+
+          if (
+            profileUpdateError
+          ) {
+            throw profileUpdateError;
+          }
+
+          return {
+            outcome,
+            reviewedAt,
+            parsed,
+          };
+        },
+      });
 
       setSuccess(
         outcome === "approved"

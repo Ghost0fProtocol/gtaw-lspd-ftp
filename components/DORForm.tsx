@@ -9,6 +9,7 @@ import {
 
 import { getTrainees } from "../lib/trainees";
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 import {
   DORRating,
   generateDORBBCode,
@@ -1055,44 +1056,144 @@ export default function DORForm({
         null,
     };
 
+    const auditUser = {
+      id: ftoId,
+      name:
+        formData.fieldTrainingOfficer ||
+        null,
+      role: null,
+    };
+
     try {
       const currentDraftId =
         draftIdRef.current ??
         draftId;
 
       if (currentDraftId) {
-        const {
-          error,
-        } = await supabase
-          .from("dors")
-          .update(
-            draftPayload
-          )
-          .eq(
-            "id",
-            currentDraftId
-          );
+        if (automatic) {
+          const {
+            error,
+          } = await supabase
+            .from("dors")
+            .update(
+              draftPayload
+            )
+            .eq(
+              "id",
+              currentDraftId
+            );
 
-        if (error) {
-          throw error;
+          if (error) {
+            throw error;
+          }
+        } else {
+          await auditAction({
+            user:
+              auditUser,
+
+            action:
+              "SAVE_DOR_DRAFT",
+
+            category:
+              "DORs",
+
+            entityType:
+              "dor",
+
+            entityId:
+              currentDraftId,
+
+            targetName:
+              `${formData.probationaryOfficer || "Unknown trainee"} · Patrol ${formData.patrolNumber}`,
+
+            oldData: {
+              last_saved_at:
+                lastSavedAt,
+
+              status:
+                "draft",
+            },
+
+            newData:
+              dorAuditSnapshot(
+                draftPayload,
+                formData,
+                selectedNotebookItemIds
+              ),
+
+            execute:
+              async () => {
+                const result =
+                  await supabase
+                    .from("dors")
+                    .update(
+                      draftPayload
+                    )
+                    .eq(
+                      "id",
+                      currentDraftId
+                    );
+
+                if (
+                  result.error
+                ) {
+                  throw result.error;
+                }
+
+                return result;
+              },
+          });
         }
       } else {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("dors")
-          .insert(
-            draftPayload
-          )
-          .select(
-            "id, started_by, last_saved_at"
-          )
-          .single();
+        const createDraft =
+          async () => {
+            const result =
+              await supabase
+                .from("dors")
+                .insert(
+                  draftPayload
+                )
+                .select(
+                  "id, started_by, last_saved_at"
+                )
+                .single();
 
-        if (error) {
-          throw error;
-        }
+            if (
+              result.error
+            ) {
+              throw result.error;
+            }
+
+            return result;
+          };
+
+        const { data } =
+          await auditAction({
+            user:
+              auditUser,
+
+            action:
+              "CREATE_DOR_DRAFT",
+
+            category:
+              "DORs",
+
+            entityType:
+              "dor",
+
+            targetName:
+              `${formData.probationaryOfficer || "Unknown trainee"} · Patrol ${formData.patrolNumber}`,
+
+            newData:
+              dorAuditSnapshot(
+                draftPayload,
+                formData,
+                selectedNotebookItemIds
+              ),
+
+            execute:
+              createDraft,
+          });
 
         draftIdRef.current =
           data.id;
@@ -1315,6 +1416,14 @@ export default function DORForm({
         evaluationRatings
       );
 
+    const auditUser = {
+      id: ftoId,
+      name:
+        formData.fieldTrainingOfficer ||
+        null,
+      role: null,
+    };
+
     try {
       const submittedAt =
         new Date().toISOString();
@@ -1373,47 +1482,94 @@ export default function DORForm({
       let savedDORId =
         draftId;
 
-      if (draftId) {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("dors")
-          .update(
-            submittedPayload
-          )
-          .eq(
-            "id",
+      const submitResult =
+        await auditAction({
+          user:
+            auditUser,
+
+          action:
+            "SUBMIT_DOR",
+
+          category:
+            "DORs",
+
+          entityType:
+            "dor",
+
+          entityId:
+            draftId ??
+            undefined,
+
+          targetName:
+            `${formData.probationaryOfficer} · Patrol ${formData.patrolNumber}`,
+
+          oldData:
             draftId
-          )
-          .select("id")
-          .single();
+              ? {
+                  dor_id:
+                    draftId,
 
-        if (error) {
-          throw error;
-        }
+                  status:
+                    "draft",
 
-        savedDORId =
-          data.id;
-      } else {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("dors")
-          .insert(
-            submittedPayload
-          )
-          .select("id")
-          .single();
+                  last_saved_at:
+                    lastSavedAt,
+                }
+              : null,
 
-        if (error) {
-          throw error;
-        }
+          newData:
+            dorAuditSnapshot(
+              submittedPayload,
+              formData,
+              selectedNotebookItemIds
+            ),
 
-        savedDORId =
-          data.id;
-      }
+          execute:
+            async () => {
+              if (draftId) {
+                const result =
+                  await supabase
+                    .from("dors")
+                    .update(
+                      submittedPayload
+                    )
+                    .eq(
+                      "id",
+                      draftId
+                    )
+                    .select("id")
+                    .single();
+
+                if (
+                  result.error
+                ) {
+                  throw result.error;
+                }
+
+                return result;
+              }
+
+              const result =
+                await supabase
+                  .from("dors")
+                  .insert(
+                    submittedPayload
+                  )
+                  .select("id")
+                  .single();
+
+              if (
+                result.error
+              ) {
+                throw result.error;
+              }
+
+              return result;
+            },
+        });
+
+      savedDORId =
+        submitResult.data.id;
 
       const savedPatrolNumber =
         formData.patrolNumber;
@@ -1425,24 +1581,97 @@ export default function DORForm({
       if (
         selectedNotebookItemIds.length > 0
       ) {
-        const {
-          error:
-            notebookUpdateError,
-        } = await supabase
-          .from("notebook_items")
-          .update({
-            completed: true,
-          })
-          .in(
-            "id",
-            selectedNotebookItemIds
-          )
-          .eq(
-            "trainee_id",
-            selectedTrainee
-          );
+        const selectedItems =
+          incompleteNotebookItems
+            .filter(
+              (item) =>
+                selectedNotebookItemIds.includes(
+                  item.id
+                )
+            )
+            .map(
+              (item) => ({
+                id:
+                  item.id,
 
-        if (notebookUpdateError) {
+                section:
+                  item.section,
+
+                item_label:
+                  item.item_label,
+              })
+            );
+
+        try {
+          await auditAction({
+            user:
+              auditUser,
+
+            action:
+              "COMPLETE_NOTEBOOK_ITEMS_FROM_DOR",
+
+            category:
+              "Notebook",
+
+            entityType:
+              "trainee",
+
+            entityId:
+              selectedTrainee,
+
+            targetName:
+              formData.probationaryOfficer,
+
+            oldData: {
+              completed_items:
+                [],
+            },
+
+            newData: {
+              dor_id:
+                savedDORId,
+
+              patrol_number:
+                Number(
+                  formData.patrolNumber
+                ),
+
+              completed_items:
+                selectedItems,
+            },
+
+            execute:
+              async () => {
+                const result =
+                  await supabase
+                    .from(
+                      "notebook_items"
+                    )
+                    .update({
+                      completed:
+                        true,
+                    })
+                    .in(
+                      "id",
+                      selectedNotebookItemIds
+                    )
+                    .eq(
+                      "trainee_id",
+                      selectedTrainee
+                    );
+
+                if (
+                  result.error
+                ) {
+                  throw result.error;
+                }
+
+                return result;
+              },
+          });
+        } catch (
+          notebookUpdateError
+        ) {
           console.error(
             "UPDATE NOTEBOOK ITEMS ERROR",
             notebookUpdateError
@@ -1463,6 +1692,52 @@ export default function DORForm({
             formData.date,
           duration:
             formData.duration,
+        });
+
+        await auditAction({
+          user:
+            auditUser,
+
+          action:
+            "ADD_FTO_TRAINING_ENTRY_FROM_DOR",
+
+          category:
+            "FTP Files",
+
+          entityType:
+            "dor",
+
+          entityId:
+            savedDORId ??
+            undefined,
+
+          targetName:
+            formData.fieldTrainingOfficer,
+
+          newData: {
+            dor_id:
+              savedDORId,
+
+            trainee_name:
+              formData.probationaryOfficer,
+
+            patrol_number:
+              Number(
+                formData.patrolNumber
+              ),
+
+            patrol_date:
+              formData.date,
+
+            duration:
+              formData.duration,
+          },
+
+          execute:
+            async () => ({
+              success:
+                true,
+            }),
         });
       } catch (ftoFileError) {
         console.error(
@@ -1500,37 +1775,87 @@ export default function DORForm({
             );
           }
 
-          const response =
-            await fetch(
-              "/api/ftp",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                  Authorization:
-                    `Bearer ${accessToken}`,
-                },
-                body: JSON.stringify({
-                  action:
-                    "completeFinalEvaluation",
-                  traineeId:
-                    selectedTrainee,
-                  dorId:
-                    savedDORId,
-                }),
-              }
-            );
+          await auditAction({
+            user:
+              auditUser,
 
-          const result =
-            await response.json();
+            action:
+              "COMPLETE_FINAL_EVALUATION",
 
-          if (!response.ok) {
-            throw new Error(
-              result?.error ??
-                "Final Evaluation progression could not be completed."
-            );
-          }
+            category:
+              "Probationers",
+
+            entityType:
+              "trainee",
+
+            entityId:
+              selectedTrainee,
+
+            targetName:
+              formData.probationaryOfficer,
+
+            oldData: {
+              progression:
+                "pre-final-evaluation",
+            },
+
+            newData: {
+              progression:
+                "final-evaluation-completed",
+
+              dor_id:
+                savedDORId,
+
+              patrol_number:
+                Number(
+                  formData.patrolNumber
+                ),
+            },
+
+            execute:
+              async () => {
+                const response =
+                  await fetch(
+                    "/api/ftp",
+                    {
+                      method:
+                        "POST",
+
+                      headers: {
+                        "Content-Type":
+                          "application/json",
+
+                        Authorization:
+                          `Bearer ${accessToken}`,
+                      },
+
+                      body:
+                        JSON.stringify({
+                          action:
+                            "completeFinalEvaluation",
+
+                          traineeId:
+                            selectedTrainee,
+
+                          dorId:
+                            savedDORId,
+                        }),
+                    }
+                  );
+
+                const result =
+                  await response.json();
+
+                if (!response.ok) {
+                  throw new Error(
+                    result?.error ??
+                      "Final Evaluation progression could not be completed."
+                  );
+                }
+
+                return result;
+              },
+          });
         } catch (
           progressionError
         ) {
@@ -2608,6 +2933,92 @@ export default function DORForm({
       )}
     </div>
   );
+}
+
+function dorAuditSnapshot(
+  payload: Record<string, unknown>,
+  formData: DORFormData,
+  selectedNotebookItemIds: string[]
+) {
+  return {
+    trainee_id:
+      payload.trainee_id,
+
+    trainee_name:
+      formData.probationaryOfficer,
+
+    trainee_badge_number:
+      formData.badgeNumber,
+
+    trainee_rank:
+      formData.rank,
+
+    trainee_work_number:
+      formData.workNumber,
+
+    fto_id:
+      payload.fto_id,
+
+    fto_name:
+      formData.fieldTrainingOfficer,
+
+    fto_badge_number:
+      formData.ftoBadgeNumber,
+
+    patrol_number:
+      payload.patrol_number,
+
+    patrol_type:
+      payload.patrol_type,
+
+    patrol_date:
+      payload.patrol_date,
+
+    start_time:
+      payload.start_time,
+
+    end_time:
+      payload.end_time,
+
+    duration:
+      payload.duration,
+
+    incidents:
+      payload.incidents,
+
+    below_standard:
+      payload.below_standard,
+
+    above_standard:
+      payload.above_standard,
+
+    learning_goals:
+      payload.learning_goals,
+
+    roleplay_remarks:
+      payload.roleplay_remarks,
+
+    ratings:
+      payload.ratings,
+
+    completed_notebook_item_ids:
+      selectedNotebookItemIds,
+
+    status:
+      payload.status,
+
+    started_by:
+      payload.started_by,
+
+    completed_by:
+      payload.completed_by,
+
+    last_saved_at:
+      payload.last_saved_at,
+
+    submitted_at:
+      payload.submitted_at,
+  };
 }
 
 function normalisePatrolType(

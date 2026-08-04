@@ -8,6 +8,7 @@ import {
 import BBCodeRecord from "./BBCodeRecord";
 import PPOWERForm from "./PPOWERForm";
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 
 import {
   Trainee,
@@ -521,12 +522,47 @@ export default function TraineeProfile({
 
   async function saveProfile() {
     try {
-      await updateTrainee(
-        trainee.id,
-        {
+      await auditAction({
+        user,
+
+        action:
+          "UPDATE_TRAINEE_STATUS",
+
+        category:
+          "Probationers",
+
+        entityType:
+          "trainee",
+
+        entityId:
+          trainee.id,
+
+        targetName:
+          trainee.name,
+
+        oldData: {
+          status:
+            trainee.status,
+        },
+
+        newData: {
           status,
-        }
-      );
+        },
+
+        execute:
+          async () => {
+            await updateTrainee(
+              trainee.id,
+              {
+                status,
+              }
+            );
+
+            return {
+              status,
+            };
+          },
+      });
 
       onUpdate({
         ...trainee,
@@ -549,6 +585,27 @@ export default function TraineeProfile({
     const currentNotebook =
       trainee.notebook ??
       [];
+
+    const currentSection =
+      currentNotebook.find(
+        (section) =>
+          section.section ===
+          sectionName
+      );
+
+    const currentItem =
+      currentSection?.items.find(
+        (item) =>
+          item.id ===
+          itemId
+      );
+
+    if (!currentItem) {
+      return;
+    }
+
+    const nextCompleted =
+      !currentItem.completed;
 
     const updatedNotebook =
       currentNotebook.map(
@@ -575,7 +632,7 @@ export default function TraineeProfile({
                   return {
                     ...item,
                     completed:
-                      !item.completed,
+                      nextCompleted,
                   };
                 }
               ),
@@ -594,13 +651,76 @@ export default function TraineeProfile({
     };
 
     try {
-      await updateTrainee(
-        trainee.id,
-        {
-          notebook:
-            updatedNotebook,
-        }
-      );
+      await auditAction({
+        user,
+
+        action:
+          nextCompleted
+            ? "COMPLETE_NOTEBOOK_ITEM"
+            : "UNCOMPLETE_NOTEBOOK_ITEM",
+
+        category:
+          "Notebook",
+
+        entityType:
+          "trainee",
+
+        entityId:
+          trainee.id,
+
+        targetName:
+          trainee.name,
+
+        oldData: {
+          section:
+            sectionName,
+
+          item_id:
+            itemId,
+
+          item_label:
+            currentItem.label,
+
+          completed:
+            currentItem.completed,
+
+          progress:
+            trainee.progress,
+        },
+
+        newData: {
+          section:
+            sectionName,
+
+          item_id:
+            itemId,
+
+          item_label:
+            currentItem.label,
+
+          completed:
+            nextCompleted,
+
+          progress:
+            updatedTrainee.progress,
+        },
+
+        execute:
+          async () => {
+            await updateTrainee(
+              trainee.id,
+              {
+                notebook:
+                  updatedNotebook,
+              }
+            );
+
+            return {
+              notebook:
+                updatedNotebook,
+            };
+          },
+      });
 
       onUpdate(
         updatedTrainee
@@ -666,33 +786,102 @@ export default function TraineeProfile({
         );
       }
 
-      const response = await fetch(
-        "/api/ftp",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            Authorization:
-              `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            action,
-            traineeId:
-              trainee.id,
-          }),
-        }
-      );
+      const auditActionName =
+        action === "progressToFPP"
+          ? "PROGRESS_TO_FPP"
+          : action === "unlockFinalEvaluation"
+            ? "UNLOCK_FINAL_EVALUATION"
+            : "PROMOTE_TO_P2";
+
+      const expectedStage =
+        action === "progressToFPP"
+          ? "FPP"
+          : action === "unlockFinalEvaluation"
+            ? "Final Evaluation"
+            : "P2";
 
       const result =
-        await response.json();
+        await auditAction({
+          user,
 
-      if (!response.ok) {
-        throw new Error(
-          result?.error ??
-            "The FTP progression action failed."
-        );
-      }
+          action:
+            auditActionName,
+
+          category:
+            "Probationers",
+
+          entityType:
+            "trainee",
+
+          entityId:
+            trainee.id,
+
+          targetName:
+            trainee.name,
+
+          oldData:
+            traineeProgressionSnapshot(
+              trainee
+            ),
+
+          newData: {
+            requested_action:
+              action,
+
+            expected_training_stage:
+              expectedStage,
+
+            expected_status:
+              action === "promoteToP2"
+                ? "P2"
+                : trainee.status,
+
+            assigned_ftm_id:
+              action === "promoteToP2"
+                ? null
+                : trainee.assignedFtmId,
+          },
+
+          execute:
+            async () => {
+              const response =
+                await fetch(
+                  "/api/ftp",
+                  {
+                    method:
+                      "POST",
+
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+
+                      Authorization:
+                        `Bearer ${accessToken}`,
+                    },
+
+                    body:
+                      JSON.stringify({
+                        action,
+
+                        traineeId:
+                          trainee.id,
+                      }),
+                  }
+                );
+
+              const responseBody =
+                await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  responseBody?.error ??
+                    "The FTP progression action failed."
+                );
+              }
+
+              return responseBody;
+            },
+        });
 
       const now =
         new Date().toISOString();
@@ -905,21 +1094,23 @@ export default function TraineeProfile({
   }
 
   const canCompletePPOWER = [
-    "Field Training Manager",
-    "Field Training Supervisor",
-    "STAFF",
-    "LSPD STAFF",
-  ].includes(
-    user?.role ?? ""
-  );
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+].includes(
+  user?.role ?? ""
+);
 
-  const canPromoteToP2 = [
-    "Field Training Supervisor",
-    "STAFF",
-    "LSPD STAFF",
-  ].includes(
-    user?.role ?? ""
-  );
+const canPromoteToP2 = [
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+].includes(
+  user?.role ?? ""
+);
 
   const submittedDORs =
     dors.filter(
@@ -2279,6 +2470,57 @@ function ReportSection({
       </p>
     </div>
   );
+}
+
+function traineeProgressionSnapshot(
+  trainee: Trainee
+) {
+  return {
+    status:
+      trainee.status,
+
+    training_stage:
+      trainee.trainingStage,
+
+    assigned_ftm_id:
+      trainee.assignedFtmId,
+
+    week_1_ppower_outcome:
+      trainee.week1PPOWEROutcome,
+
+    week_2_ppower_outcome:
+      trainee.week2PPOWEROutcome,
+
+    week_1_ppower_completed_at:
+      trainee.week1PPOWERCompletedAt,
+
+    week_2_ppower_completed_at:
+      trainee.week2PPOWERCompletedAt,
+
+    fpp_started_at:
+      trainee.fppStartedAt,
+
+    final_evaluation_unlocked_at:
+      trainee.finalEvaluationUnlockedAt,
+
+    final_evaluation_completed_at:
+      trainee.finalEvaluationCompletedAt,
+
+    final_evaluation_dor_id:
+      trainee.finalEvaluationDORId,
+
+    progression_updated_at:
+      trainee.progressionUpdatedAt,
+
+    progression_updated_by:
+      trainee.progressionUpdatedBy,
+
+    promoted_to_p2_at:
+      trainee.promotedToP2At,
+
+    promoted_to_p2_by:
+      trainee.promotedToP2By,
+  };
 }
 
 const progressionStages: TrainingStage[] = [

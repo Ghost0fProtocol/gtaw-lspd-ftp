@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabase";
 
 type Props = {
   user: any;
+  profileId?: string;
 };
 
 type FTOFile = {
@@ -51,6 +52,7 @@ type Profile = {
 
 export default function MyFTOFile({
   user,
+  profileId,
 }: Props) {
   const [
     profile,
@@ -90,7 +92,7 @@ export default function MyFTOFile({
 
   useEffect(() => {
     void loadFTOFile();
-  }, [user]);
+  }, [user, profileId]);
 
   async function loadFTOFile() {
     setLoading(true);
@@ -112,7 +114,7 @@ export default function MyFTOFile({
         `)
         .eq(
           "id",
-          user.id
+          profileId ?? user.id
         )
         .single();
 
@@ -132,7 +134,7 @@ export default function MyFTOFile({
         .select("*")
         .eq(
           "profile_id",
-          user.id
+          profileId ?? user.id
         )
         .maybeSingle();
 
@@ -295,7 +297,7 @@ export default function MyFTOFile({
   if (loading) {
     return (
       <div style={cardStyle}>
-        Loading your FTO file...
+        Loading FTO file...
       </div>
     );
   }
@@ -312,7 +314,9 @@ export default function MyFTOFile({
     return (
       <div style={cardStyle}>
         <h2>
-          My FTO File
+          {profileId
+            ? "FTO File"
+            : "My FTO File"}
         </h2>
 
         <p style={mutedStyle}>

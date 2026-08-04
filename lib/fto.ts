@@ -7,6 +7,12 @@ type AddTrainingEntryFromDORParams = {
   duration: string;
 };
 
+type AddFTMMeetingEntryFromPPOWERParams = {
+  ftmProfileId: string;
+  traineeName: string;
+  meetingDate: string;
+};
+
 function durationToMinutes(
   duration: string
 ) {
@@ -40,10 +46,10 @@ function durationToMinutes(
 }
 
 function formatSourceMonth(
-  patrolDate: string
+  date: string
 ) {
   return new Date(
-    `${patrolDate}T00:00:00Z`
+    `${date}T00:00:00Z`
   )
     .toLocaleDateString(
       "en-GB",
@@ -56,15 +62,9 @@ function formatSourceMonth(
     .toUpperCase();
 }
 
-export async function addTrainingEntryFromDOR({
-  ftoProfileId,
-  traineeName,
-  patrolDate,
-  duration,
-}: AddTrainingEntryFromDORParams) {
-  const durationMinutes =
-    durationToMinutes(duration);
-
+async function getFTOFileId(
+  profileId: string
+) {
   const {
     data: ftoFile,
     error: ftoFileError,
@@ -73,7 +73,7 @@ export async function addTrainingEntryFromDOR({
     .select("id")
     .eq(
       "profile_id",
-      ftoProfileId
+      profileId
     )
     .maybeSingle();
 
@@ -87,6 +87,82 @@ export async function addTrainingEntryFromDOR({
     );
   }
 
+  return ftoFile.id as string;
+}
+
+async function recalculateInstructionTotal(
+  ftoFileId: string
+) {
+  const {
+    data: timedEntries,
+    error: timedEntriesError,
+  } = await supabase
+    .from("fto_log_entries")
+    .select(
+      "duration_minutes"
+    )
+    .eq(
+      "fto_file_id",
+      ftoFileId
+    )
+    .not(
+      "duration_minutes",
+      "is",
+      null
+    );
+
+  if (timedEntriesError) {
+    throw timedEntriesError;
+  }
+
+  const recalculatedTotal =
+    (timedEntries ?? []).reduce(
+      (
+        total,
+        entry
+      ) =>
+        total +
+        Number(
+          entry.duration_minutes ??
+          0
+        ),
+      0
+    );
+
+  const {
+    error: totalUpdateError,
+  } = await supabase
+    .from("fto_files")
+    .update({
+      total_instruction_minutes:
+        recalculatedTotal,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      "id",
+      ftoFileId
+    );
+
+  if (totalUpdateError) {
+    throw totalUpdateError;
+  }
+}
+
+export async function addTrainingEntryFromDOR({
+  ftoProfileId,
+  traineeName,
+  patrolDate,
+  duration,
+}: AddTrainingEntryFromDORParams) {
+  const durationMinutes =
+    durationToMinutes(duration);
+
+  const ftoFileId =
+    await getFTOFileId(
+      ftoProfileId
+    );
+
   const {
     data: insertedEntry,
     error: entryError,
@@ -94,7 +170,7 @@ export async function addTrainingEntryFromDOR({
     .from("fto_log_entries")
     .insert({
       fto_file_id:
-        ftoFile.id,
+        ftoFileId,
       entry_date:
         patrolDate,
       duration_minutes:
@@ -118,60 +194,9 @@ export async function addTrainingEntryFromDOR({
   }
 
   try {
-    const {
-      data: timedEntries,
-      error: timedEntriesError,
-    } = await supabase
-      .from("fto_log_entries")
-      .select(
-        "duration_minutes"
-      )
-      .eq(
-        "fto_file_id",
-        ftoFile.id
-      )
-      .not(
-        "duration_minutes",
-        "is",
-        null
-      );
-
-    if (timedEntriesError) {
-      throw timedEntriesError;
-    }
-
-    const recalculatedTotal =
-      (timedEntries ?? []).reduce(
-        (
-          total,
-          entry
-        ) =>
-          total +
-          Number(
-            entry.duration_minutes ??
-            0
-          ),
-        0
-      );
-
-    const {
-      error: totalUpdateError,
-    } = await supabase
-      .from("fto_files")
-      .update({
-        total_instruction_minutes:
-          recalculatedTotal,
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        ftoFile.id
-      );
-
-    if (totalUpdateError) {
-      throw totalUpdateError;
-    }
+    await recalculateInstructionTotal(
+      ftoFileId
+    );
   } catch (error) {
     const {
       error: rollbackError,
@@ -191,5 +216,60 @@ export async function addTrainingEntryFromDOR({
     }
 
     throw error;
+  }
+}
+
+export async function addFTMMeetingEntryFromPPOWER({
+  ftmProfileId,
+  traineeName,
+  meetingDate,
+}: AddFTMMeetingEntryFromPPOWERParams) {
+  const ftoFileId =
+    await getFTOFileId(
+      ftmProfileId
+    );
+
+  const {
+    error: entryError,
+  } = await supabase
+    .from("fto_log_entries")
+    .insert({
+      fto_file_id:
+        ftoFileId,
+      entry_date:
+        meetingDate,
+      duration_minutes:
+        null,
+      subject_name:
+        traineeName,
+      entry_type:
+        "weekly_ftm_meeting",
+      source_url:
+        null,
+      source_month:
+        formatSourceMonth(
+          meetingDate
+        ),
+    });
+
+  if (entryError) {
+    throw entryError;
+  }
+
+  const {
+    error: fileUpdateError,
+  } = await supabase
+    .from("fto_files")
+    .update({
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq(
+      "id",
+      ftoFileId
+    );
+
+  if (fileUpdateError) {
+    throw fileUpdateError;
   }
 }

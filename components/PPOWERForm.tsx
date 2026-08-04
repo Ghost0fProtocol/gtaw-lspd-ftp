@@ -8,6 +8,8 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
+import { addFTMMeetingEntryFromPPOWER } from "../lib/fto";
 import type {
   DORRating,
 } from "../lib/generateDORBBCode";
@@ -96,6 +98,11 @@ export default function PPOWERForm({
   });
 
   const [
+    managerId,
+    setManagerId,
+  ] = useState("");
+
+  const [
     ratings,
     setRatings,
   ] = useState<
@@ -163,6 +170,11 @@ export default function PPOWERForm({
   ] = useState("");
 
   const [
+    ftoRecordWarning,
+    setFtoRecordWarning,
+  ] = useState("");
+
+  const [
     copied,
     setCopied,
   ] = useState(false);
@@ -193,6 +205,10 @@ export default function PPOWERForm({
           "No logged-in user was found."
         );
       }
+
+      setManagerId(
+        userData.user.id
+      );
 
       const [
         traineeResult,
@@ -371,6 +387,7 @@ export default function PPOWERForm({
     setSaving(true);
     setError("");
     setSuccess("");
+    setFtoRecordWarning("");
 
     const formData:
       PPOWERFormData = {
@@ -417,42 +434,184 @@ export default function PPOWERForm({
         );
       }
 
-      const response =
-        await fetch(
-          "/api/ftp",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
-            body:
-              JSON.stringify({
-                action:
-                  "submitPPOWER",
-                traineeId,
+      const result =
+        await auditAction({
+          user: {
+            id:
+              managerId ||
+              sessionData.session
+                ?.user.id ||
+              "",
+
+            name:
+              manager.name,
+
+            role:
+              null,
+          },
+
+          action:
+            "SUBMIT_PPOWER",
+
+          category:
+            "PPOWERs",
+
+          entityType:
+            "trainee",
+
+          entityId:
+            traineeId,
+
+          targetName:
+            trainee.name,
+
+          oldData: {
+            week_number:
+              weekNumber,
+
+            previous_outcome:
+              null,
+
+            previous_attempt:
+              null,
+          },
+
+          newData: {
+            trainee_name:
+              trainee.name,
+
+            trainee_serial:
+              trainee.serial,
+
+            ftm_name:
+              manager.name,
+
+            ftm_serial:
+              manager.serial,
+
+            week_number:
+              weekNumber,
+
+            ratings,
+
+            completed_rating_count:
+              completedRatings,
+
+            strengths_discussed:
+              strengthsDiscussed,
+
+            weaknesses_discussed:
+              weaknessesDiscussed,
+
+            remedial_required:
+              remedialRequired,
+
+            remedial_training:
+              remedialTraining.trim() ||
+              null,
+
+            summary_comments:
+              summaryComments.trim(),
+
+            outcome,
+
+            bbcode_generated:
+              true,
+
+            expected_progression:
+              getExpectedPPOWERProgression(
                 weekNumber,
-                ratings,
-                strengthsDiscussed,
-                weaknessesDiscussed,
-                remedialRequired,
-                remedialTraining,
-                summaryComments,
-                outcome,
-                bbcode,
-              }),
-          }
+                outcome
+              ),
+          },
+
+          execute:
+            async () => {
+              const response =
+                await fetch(
+                  "/api/ftp",
+                  {
+                    method:
+                      "POST",
+
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+
+                      Authorization:
+                        `Bearer ${accessToken}`,
+                    },
+
+                    body:
+                      JSON.stringify({
+                        action:
+                          "submitPPOWER",
+
+                        traineeId,
+
+                        weekNumber,
+
+                        ratings,
+
+                        strengthsDiscussed,
+
+                        weaknessesDiscussed,
+
+                        remedialRequired,
+
+                        remedialTraining,
+
+                        summaryComments,
+
+                        outcome,
+
+                        bbcode,
+                      }),
+                  }
+                );
+
+              const responseBody =
+                await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  responseBody?.error ??
+                    "The PPOWER could not be submitted."
+                );
+              }
+
+              return responseBody;
+            },
+        });
+
+      try {
+        const meetingDate =
+          new Date()
+            .toISOString()
+            .slice(0, 10);
+
+        await addFTMMeetingEntryFromPPOWER({
+          ftmProfileId:
+            managerId ||
+            sessionData.session
+              ?.user.id ||
+            "",
+
+          traineeName:
+            trainee.name,
+
+          meetingDate,
+        });
+      } catch (ftoRecordError) {
+        console.error(
+          "ADD PPOWER TO FTO RECORD ERROR",
+          ftoRecordError
         );
 
-      const result =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result?.error ??
-            "The PPOWER could not be submitted."
+        setFtoRecordWarning(
+          ftoRecordError instanceof Error
+            ? `The PPOWER was submitted, but the FTM Meeting entry could not be added to your FTO record: ${ftoRecordError.message}`
+            : "The PPOWER was submitted, but the FTM Meeting entry could not be added to your FTO record."
         );
       }
 
@@ -790,6 +949,12 @@ export default function PPOWERForm({
           </div>
         )}
 
+        {ftoRecordWarning && (
+          <div style={warningStyle}>
+            {ftoRecordWarning}
+          </div>
+        )}
+
         <div style={buttonRowStyle}>
           <button
             type="button"
@@ -841,6 +1006,38 @@ export default function PPOWERForm({
       )}
     </div>
   );
+}
+
+function getExpectedPPOWERProgression(
+  weekNumber: 1 | 2,
+  outcome: PPOWEROutcome
+) {
+  if (
+    outcome !==
+    "Satisfactory"
+  ) {
+    return {
+      progression:
+        "remain_in_current_week",
+
+      target_stage:
+        weekNumber === 1
+          ? "Week 1"
+          : "Week 2",
+    };
+  }
+
+  return {
+    progression:
+      weekNumber === 1
+        ? "progress_to_week_2"
+        : "week_2_satisfactory",
+
+    target_stage:
+      weekNumber === 1
+        ? "Week 2"
+        : "Week 2",
+  };
 }
 
 function ReadOnlyField({
@@ -1101,6 +1298,15 @@ const errorStyle = {
   border: "1px solid #991b1b",
   borderRadius: "8px",
   whiteSpace: "pre-line" as const,
+};
+
+const warningStyle = {
+  padding: "14px",
+  color: "#fde68a",
+  backgroundColor:
+    "rgba(120, 53, 15, 0.3)",
+  border: "1px solid #a16207",
+  borderRadius: "8px",
 };
 
 const successStyle = {

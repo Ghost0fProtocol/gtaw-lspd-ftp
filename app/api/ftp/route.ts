@@ -10,12 +10,14 @@ import {
 const ppowerRoles = [
   "Field Training Manager",
   "Field Training Supervisor",
+  "FTP Staff",
   "STAFF",
   "LSPD STAFF",
 ];
 
 const supervisorRoles = [
   "Field Training Supervisor",
+  "FTP Staff",
   "STAFF",
   "LSPD STAFF",
 ];

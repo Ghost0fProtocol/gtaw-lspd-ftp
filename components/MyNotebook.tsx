@@ -7,6 +7,7 @@ import {
 
 import Image from "next/image";
 import { supabase } from "../lib/supabase";
+import { auditAction } from "../lib/auditAction";
 
 type Props = {
   user: any;
@@ -39,6 +40,25 @@ type DORRecord = {
   bbcode: string;
   created_at: string;
   ftoName: string;
+};
+
+type SupervisingOfficer = {
+  id: string;
+  name: string;
+  rank: string;
+  role: string | null;
+};
+
+type UnguidedPatrol = {
+  id: string;
+  trainee_id: string;
+  supervising_officer_id: string | null;
+  supervising_officer_name: string;
+  supervising_officer_rank: string;
+  patrol_date: string;
+  patrol_time: string;
+  statement_bbcode: string;
+  created_at: string;
 };
 
 const evaluationLabels: Record<string, string> = {
@@ -121,6 +141,51 @@ export default function MyNotebook({
     copied,
     setCopied,
   ] = useState(false);
+
+  const [
+    supervisingOfficers,
+    setSupervisingOfficers,
+  ] = useState<SupervisingOfficer[]>([]);
+
+  const [
+    unguidedPatrols,
+    setUnguidedPatrols,
+  ] = useState<UnguidedPatrol[]>([]);
+
+  const [
+    selectedSupervisorId,
+    setSelectedSupervisorId,
+  ] = useState("");
+
+  const [
+    unguidedDate,
+    setUnguidedDate,
+  ] = useState("");
+
+  const [
+    unguidedTime,
+    setUnguidedTime,
+  ] = useState("");
+
+  const [
+    savingUnguided,
+    setSavingUnguided,
+  ] = useState(false);
+
+  const [
+    unguidedError,
+    setUnguidedError,
+  ] = useState("");
+
+  const [
+    unguidedSuccess,
+    setUnguidedSuccess,
+  ] = useState("");
+
+  const [
+    copiedUnguidedId,
+    setCopiedUnguidedId,
+  ] = useState<string | null>(null);
 
   useEffect(() => {
     loadNotebook();
@@ -242,9 +307,15 @@ export default function MyNotebook({
       itemData ?? []
     );
 
-    await loadDORs(
-      traineeData.id
-    );
+    await Promise.all([
+      loadDORs(
+        traineeData.id
+      ),
+      loadUnguidedPatrols(
+        traineeData.id
+      ),
+      loadSupervisingOfficers(),
+    ]);
 
     setLoading(false);
   }
@@ -343,6 +414,336 @@ export default function MyNotebook({
       );
     } finally {
       setLoadingDORs(false);
+    }
+  }
+
+  async function loadSupervisingOfficers() {
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("profiles")
+        .select(`
+          id,
+          name,
+          rank,
+          role
+        `)
+        .not(
+          "name",
+          "is",
+          null
+        )
+        .order(
+          "name",
+          {
+            ascending: true,
+          }
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setSupervisingOfficers(
+        (data ?? [])
+          .filter(
+            (officer) =>
+              officer.id !==
+              user.id
+          )
+          .map(
+            (officer) => ({
+              id:
+                officer.id,
+
+              name:
+                officer.name ??
+                "Unknown Officer",
+
+              rank:
+                officer.rank ??
+                "Police Officer I",
+
+              role:
+                officer.role ??
+                null,
+            })
+          )
+      );
+    } catch (error) {
+      console.error(
+        "LOAD SUPERVISING OFFICERS ERROR",
+        error
+      );
+
+      setUnguidedError(
+        error instanceof Error
+          ? error.message
+          : "The supervising-officer list could not be loaded."
+      );
+    }
+  }
+
+  async function loadUnguidedPatrols(
+    traineeRecordId: string
+  ) {
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from(
+          "unguided_patrols"
+        )
+        .select("*")
+        .eq(
+          "trainee_id",
+          traineeRecordId
+        )
+        .order(
+          "patrol_date",
+          {
+            ascending: false,
+          }
+        )
+        .order(
+          "patrol_time",
+          {
+            ascending: false,
+          }
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setUnguidedPatrols(
+        data ?? []
+      );
+    } catch (error) {
+      console.error(
+        "LOAD UNGUIDED PATROLS ERROR",
+        error
+      );
+
+      setUnguidedError(
+        error instanceof Error
+          ? error.message
+          : "Unguided patrols could not be loaded."
+      );
+    }
+  }
+
+  function buildUnguidedStatement(
+    officer:
+      SupervisingOfficer,
+    date: string,
+    time: string
+  ) {
+    const traineeRank =
+      profile?.rank ||
+      "Police Officer I";
+
+    const traineeName =
+      profile?.name ||
+      user.name ||
+      "Unknown Officer";
+
+    return `I, [b]${traineeRank} ${traineeName}[/b] conducted an unguided patrol with [b]${officer.rank} ${officer.name}[/b] on ${formatDate(date)}, ${time}`;
+  }
+
+  async function saveUnguidedPatrol() {
+    if (!trainee) {
+      return;
+    }
+
+    const officer =
+      supervisingOfficers.find(
+        (item) =>
+          item.id ===
+          selectedSupervisorId
+      );
+
+    if (!officer) {
+      setUnguidedError(
+        "Select the officer who accompanied the unguided patrol."
+      );
+      return;
+    }
+
+    if (!unguidedDate) {
+      setUnguidedError(
+        "Select the patrol date."
+      );
+      return;
+    }
+
+    if (!unguidedTime) {
+      setUnguidedError(
+        "Select the patrol time."
+      );
+      return;
+    }
+
+    const statement =
+      buildUnguidedStatement(
+        officer,
+        unguidedDate,
+        unguidedTime
+      );
+
+    setSavingUnguided(true);
+    setUnguidedError("");
+    setUnguidedSuccess("");
+
+    try {
+      const { data } =
+        await auditAction({
+          user,
+
+          action:
+            "ADD_UNGUIDED_PATROL",
+
+          category:
+            "Notebook",
+
+          entityType:
+            "trainee",
+
+          entityId:
+            trainee.id,
+
+          targetName:
+            profile?.name ||
+            user.name ||
+            "Unknown Officer",
+
+          newData: {
+            trainee_id:
+              trainee.id,
+
+            supervising_officer_id:
+              officer.id,
+
+            supervising_officer_name:
+              officer.name,
+
+            supervising_officer_rank:
+              officer.rank,
+
+            patrol_date:
+              unguidedDate,
+
+            patrol_time:
+              unguidedTime,
+
+            statement_bbcode:
+              statement,
+          },
+
+          execute:
+            async () => {
+              const result =
+                await supabase
+                  .from(
+                    "unguided_patrols"
+                  )
+                  .insert({
+                    trainee_id:
+                      trainee.id,
+
+                    supervising_officer_id:
+                      officer.id,
+
+                    supervising_officer_name:
+                      officer.name,
+
+                    supervising_officer_rank:
+                      officer.rank,
+
+                    patrol_date:
+                      unguidedDate,
+
+                    patrol_time:
+                      unguidedTime,
+
+                    statement_bbcode:
+                      statement,
+
+                    created_by:
+                      user.id,
+                  })
+                  .select("*")
+                  .single();
+
+              if (
+                result.error
+              ) {
+                throw result.error;
+              }
+
+              return result;
+            },
+        });
+
+      setUnguidedPatrols(
+        (current) => [
+          data,
+          ...current,
+        ]
+      );
+
+      setSelectedSupervisorId("");
+      setUnguidedDate("");
+      setUnguidedTime("");
+
+      setUnguidedSuccess(
+        "Unguided patrol added to your notebook."
+      );
+    } catch (error) {
+      console.error(
+        "SAVE UNGUIDED PATROL ERROR",
+        error
+      );
+
+      setUnguidedError(
+        error instanceof Error
+          ? error.message
+          : "The unguided patrol could not be saved."
+      );
+    } finally {
+      setSavingUnguided(false);
+    }
+  }
+
+  async function copyUnguidedBBCode(
+    patrol: UnguidedPatrol
+  ) {
+    try {
+      await navigator.clipboard.writeText(
+        patrol.statement_bbcode
+      );
+
+      setCopiedUnguidedId(
+        patrol.id
+      );
+
+      setTimeout(() => {
+        setCopiedUnguidedId(
+          null
+        );
+      }, 2000);
+    } catch (error) {
+      console.error(
+        "COPY UNGUIDED BBCODE ERROR",
+        error
+      );
+
+      setUnguidedError(
+        "The unguided patrol BBCode could not be copied."
+      );
     }
   }
 
@@ -464,6 +865,11 @@ export default function MyNotebook({
       })
     );
   }
+
+  const canAddUnguidedPatrol =
+    !traineeId &&
+    user?.id ===
+      trainee?.profile_id;
 
   return (
     <div>
@@ -798,6 +1204,234 @@ export default function MyNotebook({
                     View full DOR
                   </span>
                 </button>
+              )
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={card}>
+        <div style={sectionHeader}>
+          <div>
+            <h2
+              style={{
+                ...heading,
+                marginBottom: "6px",
+              }}
+            >
+              Unguided Patrols
+            </h2>
+
+            <p style={muted}>
+              Record patrols completed without direct FTO guidance.
+            </p>
+          </div>
+
+          <span style={countBadge}>
+            {unguidedPatrols.length} patrol
+            {unguidedPatrols.length === 1
+              ? ""
+              : "s"}
+          </span>
+        </div>
+
+        {canAddUnguidedPatrol && (
+          <div style={unguidedFormCard}>
+            <div style={unguidedGrid}>
+              <div>
+                <label style={formLabel}>
+                  Accompanying Officer
+                </label>
+
+                <select
+                  value={
+                    selectedSupervisorId
+                  }
+                  onChange={(event) =>
+                    setSelectedSupervisorId(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    savingUnguided
+                  }
+                  style={formInput}
+                >
+                  <option value="">
+                    Select Officer
+                  </option>
+
+                  {supervisingOfficers.map(
+                    (officer) => (
+                      <option
+                        key={officer.id}
+                        value={officer.id}
+                      >
+                        {officer.rank}{" "}
+                        {officer.name}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label style={formLabel}>
+                  Patrol Date
+                </label>
+
+                <input
+                  type="date"
+                  value={
+                    unguidedDate
+                  }
+                  onChange={(event) =>
+                    setUnguidedDate(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    savingUnguided
+                  }
+                  style={formInput}
+                />
+              </div>
+
+              <div>
+                <label style={formLabel}>
+                  Patrol Time
+                </label>
+
+                <input
+                  type="time"
+                  value={
+                    unguidedTime
+                  }
+                  onChange={(event) =>
+                    setUnguidedTime(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    savingUnguided
+                  }
+                  style={formInput}
+                />
+              </div>
+            </div>
+
+            {selectedSupervisorId &&
+              unguidedDate &&
+              unguidedTime && (
+                <div style={previewBox}>
+                  <strong>
+                    BBCode Preview
+                  </strong>
+
+                  <p style={previewText}>
+                    {buildUnguidedStatement(
+                      supervisingOfficers.find(
+                        (officer) =>
+                          officer.id ===
+                          selectedSupervisorId
+                      )!,
+                      unguidedDate,
+                      unguidedTime
+                    )}
+                  </p>
+                </div>
+              )}
+
+            {unguidedError && (
+              <div style={errorBox}>
+                {unguidedError}
+              </div>
+            )}
+
+            {unguidedSuccess && (
+              <div style={successBox}>
+                {unguidedSuccess}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                void saveUnguidedPatrol()
+              }
+              disabled={
+                savingUnguided
+              }
+              style={{
+                ...addUnguidedButton,
+                opacity:
+                  savingUnguided
+                    ? 0.65
+                    : 1,
+              }}
+            >
+              {savingUnguided
+                ? "Saving..."
+                : "Add Unguided Patrol"}
+            </button>
+          </div>
+        )}
+
+        {unguidedPatrols.length ===
+        0 ? (
+          <div style={emptyState}>
+            No unguided patrols have been recorded.
+          </div>
+        ) : (
+          <div style={unguidedList}>
+            {unguidedPatrols.map(
+              (patrol) => (
+                <div
+                  key={patrol.id}
+                  style={unguidedEntry}
+                >
+                  <div>
+                    <strong>
+                      {
+                        patrol.supervising_officer_rank
+                      }{" "}
+                      {
+                        patrol.supervising_officer_name
+                      }
+                    </strong>
+
+                    <div style={dorMeta}>
+                      {formatDate(
+                        patrol.patrol_date
+                      )}
+                      {" • "}
+                      {
+                        patrol.patrol_time
+                      }
+                    </div>
+
+                    <p style={unguidedStatement}>
+                      {
+                        patrol.statement_bbcode
+                      }
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void copyUnguidedBBCode(
+                        patrol
+                      )
+                    }
+                    style={copyUnguidedButton}
+                  >
+                    {copiedUnguidedId ===
+                    patrol.id
+                      ? "Copied!"
+                      : "Copy BBCode"}
+                  </button>
+                </div>
               )
             )}
           </div>
@@ -1207,6 +1841,111 @@ const itemBox = {
   marginTop: "10px",
   background: "#111827",
   borderRadius: "8px",
+};
+
+const unguidedFormCard = {
+  display: "grid",
+  gap: "16px",
+  padding: "18px",
+  marginBottom: "20px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const unguidedGrid = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: "16px",
+};
+
+const formLabel = {
+  display: "block",
+  marginBottom: "7px",
+  color: "#cbd5e1",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const formInput = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  padding: "12px",
+  color: "white",
+  background: "#111827",
+  border: "1px solid #475569",
+  borderRadius: "8px",
+};
+
+const previewBox = {
+  padding: "14px",
+  color: "#dbeafe",
+  background:
+    "rgba(37, 99, 235, 0.12)",
+  border: "1px solid #2563eb",
+  borderRadius: "8px",
+};
+
+const previewText = {
+  margin: "8px 0 0",
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.55,
+};
+
+const successBox = {
+  padding: "14px",
+  color: "#bbf7d0",
+  background:
+    "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "8px",
+};
+
+const addUnguidedButton = {
+  justifySelf: "start",
+  padding: "12px 18px",
+  color: "white",
+  background: "#2563eb",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const unguidedList = {
+  display: "grid",
+  gap: "12px",
+};
+
+const unguidedEntry = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "18px",
+  padding: "16px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+  flexWrap: "wrap" as const,
+};
+
+const unguidedStatement = {
+  margin: "10px 0 0",
+  color: "#cbd5e1",
+  fontSize: "13px",
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap" as const,
+};
+
+const copyUnguidedButton = {
+  padding: "9px 13px",
+  color: "white",
+  background: "#16a34a",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 700,
 };
 
 const printButton = {
