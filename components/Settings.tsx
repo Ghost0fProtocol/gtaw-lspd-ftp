@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -45,6 +46,7 @@ const ftoFileRoles = [
   "Field Training Officer",
   "Field Training Manager",
   "Field Training Supervisor",
+  "FTP Staff",
   "STAFF",
   "LSPD STAFF",
 ];
@@ -133,6 +135,19 @@ export default function Settings({
     setImportModalOpen,
   ] = useState(false);
 
+  const [availabilityWindows, setAvailabilityWindows] = useState([
+    {
+      start_time: "",
+      end_time: "",
+    },
+  ]);
+
+  const [availableForP1s, setAvailableForP1s] = useState(false);
+  const [maxP1s, setMaxP1s] = useState(4);
+
+  const [ftpToolTab, setFtpToolTab] =
+    useState<"availability" | "import">("availability");
+
   const canImportFTOFile =
     ftoFileRoles.includes(
       user.role
@@ -155,6 +170,58 @@ export default function Settings({
           0
       );
     }, [parsedPreview]);
+
+  useEffect(() => {
+    async function loadFTPSettings() {
+      const { data: availability } = await supabase
+        .from("ftp_availability_windows")
+        .select("*")
+        .eq("profile_id", user.id);
+
+      if (availability?.length) {
+        setAvailabilityWindows(
+          availability.map((item) => ({
+            start_time: item.start_time.slice(0, 5),
+            end_time: item.end_time.slice(0, 5),
+          }))
+        );
+      }
+
+      const { data: supervision } = await supabase
+        .from("ftp_supervision_preferences")
+        .select("*")
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+      if (supervision) {
+        setAvailableForP1s(supervision.available_for_p1s);
+        setMaxP1s(supervision.max_active_p1s ?? 4);
+      }
+    }
+
+    void loadFTPSettings();
+  }, [user.id]);
+
+  function updateAvailabilityWindow(index: number, field: "start_time" | "end_time", value: string) {
+    setAvailabilityWindows((current) =>
+      current.map((window, i) =>
+        i === index ? { ...window, [field]: value } : window
+      )
+    );
+  }
+
+  function addAvailabilityWindow() {
+    setAvailabilityWindows((current) => [
+      ...current,
+      { start_time: "", end_time: "" },
+    ]);
+  }
+
+  function removeAvailabilityWindow(index: number) {
+    setAvailabilityWindows((current) =>
+      current.filter((_, i) => i !== index)
+    );
+  }
 
   async function save() {
     setMessage("");
@@ -191,6 +258,59 @@ export default function Settings({
 
       if (error) {
         throw error;
+      }
+
+      const validWindows = availabilityWindows.filter(
+        (window) => window.start_time && window.end_time
+      );
+
+      const { error: deleteError } = await supabase
+        .from("ftp_availability_windows")
+        .delete()
+        .eq("profile_id", user.id);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      if (validWindows.length) {
+        const { data: savedWindows, error: insertError } = await supabase
+          .from("ftp_availability_windows")
+          .insert(
+            validWindows.map((window) => ({
+              profile_id: user.id,
+              start_time: window.start_time,
+              end_time: window.end_time,
+            }))
+          )
+          .select();
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        setAvailabilityWindows(
+          (savedWindows ?? []).map((window) => ({
+            start_time: window.start_time.slice(0, 5),
+            end_time: window.end_time.slice(0, 5),
+          }))
+        );
+      } else {
+        setAvailabilityWindows([{ start_time: "", end_time: "" }]);
+      }
+
+      if ([
+        "Field Training Manager",
+        "Field Training Supervisor",
+        "STAFF",
+      ].includes(user.role)) {
+        await supabase
+          .from("ftp_supervision_preferences")
+          .upsert({
+            profile_id: user.id,
+            available_for_p1s: availableForP1s,
+            max_active_p1s: Math.min(maxP1s, 4),
+          });
       }
 
       setMessage(
@@ -632,6 +752,123 @@ export default function Settings({
           </Field>
         </div>
 
+        <section style={{ marginTop: "30px" }}>
+          <h2>FTP Tools</h2>
+
+          <div style={tabContainerStyle}>
+            <button
+              type="button"
+              onClick={() => setFtpToolTab("availability")}
+              style={ftpToolTab === "availability" ? activeTabStyle : tabStyle}
+            >
+              Server Availability
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFtpToolTab("import")}
+              style={ftpToolTab === "import" ? activeTabStyle : tabStyle}
+            >
+              FTO BBCode Importer
+            </button>
+          </div>
+
+          {ftpToolTab === "availability" && (
+          <>
+          <h2>Server Availability</h2>
+
+          <p style={mutedStyle}>
+            Tell FTP when you are normally available on GTA:W server time.
+            Multiple availability windows are supported.
+          </p>
+
+          {availabilityWindows.map((window, index) => (
+            <div key={index} style={availabilityBoxStyle}>
+              <label style={labelStyle}>Available From</label>
+              <input
+                type="time"
+                value={window.start_time}
+                onChange={(event) =>
+                  updateAvailabilityWindow(index, "start_time", event.target.value)
+                }
+                style={input}
+              />
+
+              <label style={labelStyle}>Available Until</label>
+              <input
+                type="time"
+                value={window.end_time}
+                onChange={(event) =>
+                  updateAvailabilityWindow(index, "end_time", event.target.value)
+                }
+                style={input}
+              />
+
+              {availabilityWindows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeAvailabilityWindow(index)}
+                  style={requestButton}
+                >
+                  Remove Window
+                </button>
+              )}
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={addAvailabilityWindow}
+            style={requestButton}
+          >
+            + Add Availability Window
+          </button>
+
+          {[
+            "Field Training Manager",
+            "Field Training Supervisor",
+            "STAFF",
+          ].includes(user.role) && (
+            <>
+              <h2>Probationer Supervision</h2>
+
+              <p style={mutedStyle}>
+                Enable this if you are available to take probationary officers.
+              </p>
+
+              <select
+                value={availableForP1s ? "yes" : "no"}
+                onChange={(event) =>
+                  setAvailableForP1s(event.target.value === "yes")
+                }
+                style={input}
+              >
+                <option value="no">Not available for P1s</option>
+                <option value="yes">Available for P1s</option>
+              </select>
+
+              <input
+                type="number"
+                min={1}
+                max={4}
+                value={maxP1s}
+                onChange={(event) =>
+                  setMaxP1s(Number(event.target.value))
+                }
+                style={input}
+              />
+            </>
+          )}
+          </>
+          )}
+
+          {ftpToolTab === "import" && canImportFTOFile && (
+            <p style={mutedStyle}>
+              Use the FTO BBCode Importer below.
+            </p>
+          )}
+        </section>
+
         <button
           type="button"
           onClick={save}
@@ -676,7 +913,7 @@ export default function Settings({
         )}
       </section>
 
-      {canImportFTOFile && (
+      {ftpToolTab === "import" && canImportFTOFile && (
         <section style={cardStyle}>
           <div style={sectionHeaderStyle}>
             <div>
@@ -1434,4 +1671,37 @@ const cancelButtonStyle = {
   borderRadius: "8px",
   cursor: "pointer",
   fontWeight: 700,
+};
+
+
+const tabContainerStyle = {
+  display: "flex",
+  gap: "10px",
+  marginBottom: "20px",
+};
+
+const tabStyle = {
+  padding: "12px 18px",
+  background: "#334155",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+};
+
+const activeTabStyle = {
+  padding: "12px 18px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+};
+
+const availabilityBoxStyle = {
+  marginTop: "15px",
+  padding: "18px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
 };

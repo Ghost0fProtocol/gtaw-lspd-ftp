@@ -1,496 +1,729 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getTrainees } from "../lib/trainees";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  getTrainees,
+} from "../lib/trainees";
+
 import TraineeProfile from "./TraineeProfile";
 import CreateTrainee from "./CreateTrainee";
 
-import { Trainee } from "../lib/types";
+import type {
+  NotebookSection,
+  Trainee,
+  TrainingStage,
+} from "../lib/types";
 
+type RecordsProps = {
+  user: any;
+  openDOR: (
+    traineeId: string
+  ) => void;
+};
 
 function calculateProgress(
-  notebook: any[] = [],
+  notebook: NotebookSection[] = []
 ) {
-
   const items =
     notebook.flatMap(
-      section =>
+      (section) =>
         section.items ?? []
     );
 
-
-  if(items.length === 0){
+  if (items.length === 0) {
     return 0;
   }
 
-
   const completed =
     items.filter(
-      item => item.completed
+      (item) =>
+        item.completed
     ).length;
 
-
   return Math.round(
-    (completed / items.length) * 100
+    (
+      completed /
+      items.length
+    ) * 100
   );
 }
 
+function formatTrainee(
+  trainee: any
+): Trainee {
+  const notebook =
+    (
+      trainee.notebook ??
+      []
+    ) as NotebookSection[];
 
+  return {
+    id: trainee.id,
 
+    profileId:
+      trainee.profile_id ??
+      trainee.profile?.id ??
+      undefined,
 
+    name:
+      trainee.profile?.name ??
+      "Unknown",
 
-export default function Records() {
+    reference:
+      trainee.profile?.reference ??
+      "N/A",
 
+    status:
+      trainee.status ??
+      "Unknown",
 
-  const [traineeRecords, setTraineeRecords] =
-    useState<Trainee[]>([]);
+    progress:
+      calculateProgress(
+        notebook
+      ),
 
+    reports: 0,
 
-  const [searchTerm, setSearchTerm] =
-    useState("");
+    lastActivity:
+      "No activity",
 
+    ftm:
+      trainee.ftm?.name ??
+      "",
 
-  const [selectedTrainee, setSelectedTrainee] =
-    useState<Trainee | null>(null);
+    assignedFtmId:
+      trainee.assigned_ftm ??
+      trainee.ftm?.id ??
+      null,
 
+    notebook,
 
-  const [creatingRecord, setCreatingRecord] =
-    useState(false);
+    trainingStage:
+      (
+        trainee.training_stage ??
+        "Week 1"
+      ) as TrainingStage,
 
+    week1PPOWEROutcome:
+      trainee.week_1_ppower_outcome ??
+      null,
 
+    week2PPOWEROutcome:
+      trainee.week_2_ppower_outcome ??
+      null,
 
+    week1PPOWERCompletedAt:
+      trainee.week_1_ppower_completed_at ??
+      null,
 
+    week2PPOWERCompletedAt:
+      trainee.week_2_ppower_completed_at ??
+      null,
 
-  async function loadTrainees(){
+    fppStartedAt:
+      trainee.fpp_started_at ??
+      null,
 
-    const data =
-      await getTrainees();
+    finalEvaluationUnlockedAt:
+      trainee.final_evaluation_unlocked_at ??
+      null,
 
+    finalEvaluationCompletedAt:
+      trainee.final_evaluation_completed_at ??
+      null,
 
+    finalEvaluationDORId:
+      trainee.final_evaluation_dor_id ??
+      null,
 
-    const formatted =
-      data.map((trainee:any) => ({
+    progressionUpdatedAt:
+      trainee.progression_updated_at ??
+      null,
 
+    progressionUpdatedBy:
+      trainee.progression_updated_by ??
+      null,
 
-        id:
-          trainee.id,
+    promotedToP2At:
+      trainee.promoted_to_p2_at ??
+      null,
 
+    promotedToP2By:
+      trainee.promoted_to_p2_by ??
+      null,
+  };
+}
 
-        name:
-          trainee.profile?.name ??
-          "Unknown",
+export default function Records({
+  user,
+  openDOR,
+}: RecordsProps) {
+  const [
+    traineeRecords,
+    setTraineeRecords,
+  ] = useState<Trainee[]>([]);
 
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState("");
 
-        reference:
-          trainee.profile?.reference ??
-          "N/A",
-
-
-        status:
-          trainee.status ??
-          "Unknown",
-
-
-        progress:
-          calculateProgress(
-            trainee.notebook ?? []
-          ),
-
-
-        reports:
-          0,
-
-
-        lastActivity:
-          "No activity",
-
-
-        ftm:
-          trainee.ftm?.name ??
-          "",
-
-
-        notebook:
-          trainee.notebook ??
-          [],
-
-
-      }));
-
-
-    setTraineeRecords(
-      formatted
+  const [
+    selectedTrainee,
+    setSelectedTrainee,
+  ] =
+    useState<Trainee | null>(
+      null
     );
 
+  const [
+    creatingRecord,
+    setCreatingRecord,
+  ] = useState(false);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  async function loadTrainees() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data =
+        await getTrainees();
+
+      const formatted =
+        data.map(
+          formatTrainee
+        );
+
+      setTraineeRecords(
+        formatted
+      );
+
+      setSelectedTrainee(
+        (current) => {
+          if (!current) {
+            return null;
+          }
+
+          return (
+            formatted.find(
+              (trainee) =>
+                trainee.id ===
+                current.id
+            ) ?? null
+          );
+        }
+      );
+    } catch (loadError) {
+      console.error(
+        "LOAD TRAINING RECORDS ERROR",
+        loadError
+      );
+
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Training records could not be loaded."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
-
-
-
-
   useEffect(() => {
-
-    loadTrainees();
-
+    void loadTrainees();
   }, []);
 
-
-
-
-
+  const normalisedSearch =
+    searchTerm
+      .trim()
+      .toLowerCase();
 
   const filteredTrainees =
     traineeRecords.filter(
-      trainee =>
-        trainee.name
-          .toLowerCase()
-          .includes(
-            searchTerm.toLowerCase()
+      (trainee) => {
+        const searchableText = [
+          trainee.name,
+          trainee.reference,
+          trainee.status,
+          trainee.trainingStage,
+          trainee.ftm,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return (
+          normalisedSearch ===
+            "" ||
+          searchableText.includes(
+            normalisedSearch
           )
+        );
+      }
     );
 
-
-
-
-
-
-
-
-  if(selectedTrainee){
-
+  if (selectedTrainee) {
     return (
-
       <TraineeProfile
-
         trainee={
           selectedTrainee
         }
-
-
+        user={user}
+        openDOR={openDOR}
         onBack={() =>
-          setSelectedTrainee(null)
+          setSelectedTrainee(
+            null
+          )
         }
-
-
-        onUpdate={
-          updatedTrainee => {
-
-
-            setTraineeRecords(
-              current =>
-                current.map(
-                  trainee =>
-                    trainee.id ===
-                    updatedTrainee.id
-
+        onUpdate={(
+          updatedTrainee
+        ) => {
+          setTraineeRecords(
+            (current) =>
+              current.map(
+                (trainee) =>
+                  trainee.id ===
+                  updatedTrainee.id
                     ? updatedTrainee
-
                     : trainee
-                )
-            );
+              )
+          );
 
-
-            setSelectedTrainee(
-              updatedTrainee
-            );
-
-
-          }
-        }
-
+          setSelectedTrainee(
+            updatedTrainee
+          );
+        }}
       />
-
     );
-
   }
 
-
-
-
-
-
-
-  if(creatingRecord){
-
+  if (creatingRecord) {
     return (
-
       <CreateTrainee
-
-
         onCancel={() =>
-          setCreatingRecord(false)
+          setCreatingRecord(
+            false
+          )
         }
+        onCreate={async (
+          newTrainee
+        ) => {
+          console.log(
+            "CREATE TRAINEE REQUEST:",
+            newTrainee
+          );
 
+          setCreatingRecord(
+            false
+          );
 
-
-        onCreate={
-          async (newTrainee) => {
-
-
-            console.log(
-              "CREATE TRAINEE REQUEST:",
-              newTrainee
-            );
-
-
-            /*
-              TEMPORARY
-
-              Supabase creation will go here:
-
-              await createTrainee(
-                newTrainee
-              );
-
-
-              await loadTrainees();
-
-            */
-
-
-            setCreatingRecord(false);
-
-
-          }
-        }
-
+          await loadTrainees();
+        }}
       />
-
     );
-
   }
-
-
-
-
-
-
-
 
   return (
-
     <div>
-
-
-      <div
-        style={{
-          display:"flex",
-          justifyContent:"space-between",
-          alignItems:"center",
-          marginBottom:"22px",
-        }}
-      >
-
-
+      <div style={headerStyle}>
         <div>
-
-          <h2
-            style={{
-              margin:"0 0 6px",
-            }}
-          >
+          <h2 style={titleStyle}>
             Training Records
           </h2>
 
-
-          <p
-            style={{
-              color:"#94a3b8",
-            }}
-          >
-            Select a record to view its profile.
+          <p style={subtitleStyle}>
+            Select a probationer to
+            open their complete FTP
+            record.
           </p>
-
-
         </div>
 
+        <div style={headerButtonsStyle}>
+          <button
+            type="button"
+            onClick={() =>
+              void loadTrainees()
+            }
+            style={
+              refreshButtonStyle
+            }
+          >
+            Refresh
+          </button>
 
-
-
-        <button
-
-          onClick={() =>
-            setCreatingRecord(true)
-          }
-
-
-          style={{
-            padding:"11px 16px",
-            backgroundColor:"#2563eb",
-            color:"white",
-            border:"none",
-            borderRadius:"8px",
-            cursor:"pointer",
-          }}
-
-        >
-
-          Add Record
-
-        </button>
-
-
-
+          <button
+            type="button"
+            onClick={() =>
+              setCreatingRecord(
+                true
+              )
+            }
+            style={
+              addButtonStyle
+            }
+          >
+            Add Record
+          </button>
+        </div>
       </div>
 
-
-
-
-
+      {error && (
+        <div style={errorStyle}>
+          {error}
+        </div>
+      )}
 
       <input
-
-        value={
-          searchTerm
+        value={searchTerm}
+        onChange={(event) =>
+          setSearchTerm(
+            event.target.value
+          )
         }
-
-
-        onChange={
-          e =>
-            setSearchTerm(
-              e.target.value
-            )
-        }
-
-
-        placeholder="Search records..."
-
-
-        style={{
-          width:"100%",
-          padding:"13px",
-          marginBottom:"20px",
-          backgroundColor:"#1e293b",
-          color:"white",
-          border:"1px solid #475569",
-          borderRadius:"8px",
-        }}
-
+        placeholder="Search by name, reference, stage, status or FTM..."
+        style={searchInputStyle}
       />
 
+      <div style={recordsCardStyle}>
+        <div style={tableHeaderStyle}>
+          <strong>
+            Officer
+          </strong>
 
+          <strong>
+            Stage
+          </strong>
 
+          <strong>
+            Checklist
+          </strong>
 
+          <strong>
+            FTM
+          </strong>
+        </div>
 
-
-
-
-      <div
-
-        style={{
-          backgroundColor:"#1e293b",
-          border:"1px solid #334155",
-          borderRadius:"12px",
-        }}
-
-      >
-
-
-        {
-          filteredTrainees.length === 0 ? (
-
-            <p
-
-              style={{
-                padding:"20px",
-                color:"#94a3b8",
-              }}
-
-            >
-
-              No trainee records found.
-
-            </p>
-
-
-          ) : (
-
-
-            filteredTrainees.map(
-
-              trainee => (
-
-                <button
-
-
-                  key={
-                    trainee.id
-                  }
-
-
-                  onClick={() =>
-                    setSelectedTrainee(
-                      trainee
-                    )
-                  }
-
-
-                  style={{
-
-                    width:"100%",
-
-                    display:"grid",
-
-                    gridTemplateColumns:
-                      "2fr 1fr 1fr 1fr",
-
-                    padding:"18px",
-
-                    backgroundColor:
-                      "transparent",
-
-                    color:"white",
-
-                    border:"none",
-
-                    borderTop:
-                      "1px solid #334155",
-
-                    textAlign:"left",
-
-                    cursor:"pointer",
-
-                  }}
-
-
-                >
-
+        {loading ? (
+          <p style={emptyStyle}>
+            Loading training
+            records...
+          </p>
+        ) : filteredTrainees.length ===
+          0 ? (
+          <p style={emptyStyle}>
+            No trainee records
+            found.
+          </p>
+        ) : (
+          filteredTrainees.map(
+            (trainee) => (
+              <button
+                key={trainee.id}
+                type="button"
+                onClick={() =>
+                  setSelectedTrainee(
+                    trainee
+                  )
+                }
+                style={recordRowStyle}
+              >
+                <div>
                   <strong>
                     {trainee.name}
                   </strong>
 
+                  <p style={rowMetaStyle}>
+                    {trainee.reference}
+                  </p>
+                </div>
 
-                  <span>
+                <div>
+                  <StageBadge
+                    stage={
+                      trainee.trainingStage
+                    }
+                  />
+
+                  <p style={rowMetaStyle}>
                     {trainee.status}
-                  </span>
+                  </p>
+                </div>
 
-
-                  <span>
+                <div>
+                  <strong>
                     {trainee.progress}%
-                  </span>
+                  </strong>
 
+                  <div style={progressTrackStyle}>
+                    <div
+                      style={{
+                        ...progressFillStyle,
+                        width:
+                          `${trainee.progress}%`,
+                      }}
+                    />
+                  </div>
+                </div>
 
-                  <span>
-                    {trainee.reports}
-                  </span>
-
-
-                </button>
-
-              )
-
+                <div>
+                  <strong>
+                    {trainee.ftm ||
+                      "Unassigned"}
+                  </strong>
+                </div>
+              </button>
             )
-
           )
-
-        }
-
-
+        )}
       </div>
-
-
     </div>
-
   );
-
 }
+
+function StageBadge({
+  stage,
+}: {
+  stage: TrainingStage;
+}) {
+  return (
+    <span
+      style={{
+        ...stageBadgeStyle,
+        ...getStageStyle(
+          stage
+        ),
+      }}
+    >
+      {stage}
+    </span>
+  );
+}
+
+function getStageStyle(
+  stage: TrainingStage
+) {
+  switch (stage) {
+    case "Week 1":
+      return {
+        color: "#bfdbfe",
+        backgroundColor:
+          "rgba(30, 64, 175, 0.3)",
+        borderColor:
+          "#2563eb",
+      };
+
+    case "Week 2":
+      return {
+        color: "#ddd6fe",
+        backgroundColor:
+          "rgba(91, 33, 182, 0.3)",
+        borderColor:
+          "#7c3aed",
+      };
+
+    case "FPP":
+      return {
+        color: "#fde68a",
+        backgroundColor:
+          "rgba(120, 53, 15, 0.3)",
+        borderColor:
+          "#a16207",
+      };
+
+    case "Final Evaluation":
+      return {
+        color: "#fed7aa",
+        backgroundColor:
+          "rgba(154, 52, 18, 0.3)",
+        borderColor:
+          "#ea580c",
+      };
+
+    case "Completed":
+    case "P2":
+      return {
+        color: "#bbf7d0",
+        backgroundColor:
+          "rgba(20, 83, 45, 0.35)",
+        borderColor:
+          "#166534",
+      };
+
+    default:
+      return {
+        color: "#cbd5e1",
+        backgroundColor:
+          "#334155",
+        borderColor:
+          "#475569",
+      };
+  }
+}
+
+const headerStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  alignItems: "center",
+  gap: "20px",
+  marginBottom: "22px",
+  flexWrap: "wrap" as const,
+};
+
+const titleStyle = {
+  margin: "0 0 6px",
+};
+
+const subtitleStyle = {
+  margin: 0,
+  color: "#94a3b8",
+};
+
+const headerButtonsStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap" as const,
+};
+
+const refreshButtonStyle = {
+  padding: "11px 16px",
+  color: "white",
+  backgroundColor:
+    "#475569",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const addButtonStyle = {
+  padding: "11px 16px",
+  color: "white",
+  backgroundColor:
+    "#2563eb",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const searchInputStyle = {
+  width: "100%",
+  boxSizing:
+    "border-box" as const,
+  padding: "13px",
+  marginBottom: "20px",
+  color: "white",
+  backgroundColor:
+    "#1e293b",
+  border:
+    "1px solid #475569",
+  borderRadius: "8px",
+};
+
+const recordsCardStyle = {
+  overflow: "hidden",
+  backgroundColor:
+    "#1e293b",
+  border:
+    "1px solid #334155",
+  borderRadius: "12px",
+};
+
+const tableHeaderStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "2fr 1fr 1fr 1.25fr",
+  gap: "16px",
+  padding: "14px 18px",
+  color: "#94a3b8",
+  backgroundColor:
+    "#0f172a",
+  fontSize: "12px",
+  textTransform:
+    "uppercase" as const,
+  letterSpacing:
+    "0.06em",
+};
+
+const recordRowStyle = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns:
+    "2fr 1fr 1fr 1.25fr",
+  alignItems: "center",
+  gap: "16px",
+  padding: "18px",
+  color: "white",
+  backgroundColor:
+    "transparent",
+  border: "none",
+  borderTop:
+    "1px solid #334155",
+  textAlign: "left" as const,
+  cursor: "pointer",
+};
+
+const rowMetaStyle = {
+  margin: "5px 0 0",
+  color: "#94a3b8",
+  fontSize: "12px",
+};
+
+const stageBadgeStyle = {
+  display: "inline-block",
+  padding: "5px 9px",
+  border: "1px solid",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 800,
+};
+
+const progressTrackStyle = {
+  width: "100%",
+  maxWidth: "120px",
+  height: "6px",
+  marginTop: "8px",
+  overflow: "hidden",
+  backgroundColor:
+    "#334155",
+  borderRadius: "999px",
+};
+
+const progressFillStyle = {
+  height: "100%",
+  backgroundColor:
+    "#3b82f6",
+  borderRadius: "999px",
+};
+
+const emptyStyle = {
+  padding: "20px",
+  margin: 0,
+  color: "#94a3b8",
+};
+
+const errorStyle = {
+  padding: "14px",
+  marginBottom: "18px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
+};

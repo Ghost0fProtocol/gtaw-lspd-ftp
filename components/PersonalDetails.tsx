@@ -13,6 +13,11 @@ type Props = {
   onComplete: () => void;
 };
 
+type AvailabilityWindow = {
+  start_time: string;
+  end_time: string;
+};
+
 const ranks = [
   "Police Officer I",
   "Police Officer II",
@@ -49,123 +54,112 @@ const divisionSelectableRoles = [
   "LSPD STAFF",
 ];
 
+const supervisionRoles = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "STAFF",
+];
+
 export default function PersonalDetails({
   user,
   onComplete,
 }: Props) {
-  const [
-    badge,
-    setBadge,
-  ] = useState("");
+  const [badge, setBadge] = useState("");
+  const [workNumber, setWorkNumber] = useState("");
+  const [rank, setRank] = useState("Police Officer I");
+  const [division, setDivision] = useState("Mission Row Division");
 
-  const [
-    workNumber,
-    setWorkNumber,
-  ] = useState("");
+  const [availabilityWindows, setAvailabilityWindows] =
+    useState<AvailabilityWindow[]>([
+      {
+        start_time: "",
+        end_time: "",
+      },
+    ]);
 
-  const [
-    rank,
-    setRank,
-  ] = useState(
-    "Police Officer I"
-  );
+  const [availableForP1s, setAvailableForP1s] =
+    useState(false);
 
-  const [
-    division,
-    setDivision,
-  ] = useState(
-    "Mission Row Division"
-  );
+  const [maxP1s, setMaxP1s] =
+    useState(4);
 
-  const [
-    error,
-    setError,
-  ] = useState("");
-
-  const [
-    success,
-    setSuccess,
-  ] = useState("");
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    saving,
-    setSaving,
-  ] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const canSelectDivision =
-    divisionSelectableRoles.includes(
-      user.role
-    ) ||
-    divisionSelectableRoles.includes(
-      user.requested_role
-    );
+    divisionSelectableRoles.includes(user.role) ||
+    divisionSelectableRoles.includes(user.requested_role);
 
-  const canSelectRank =
-    canSelectDivision;
+  const canSelectRank = canSelectDivision;
+
+  const canSupervise =
+    supervisionRoles.includes(user.role);
 
   useEffect(() => {
     async function loadProfile() {
-      setError("");
-      setLoading(true);
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq(
-          "id",
-          user.id
-        )
-        .single();
+      const { data, error } =
+        await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
 
       if (error) {
-        console.error(
-          "PROFILE LOAD ERROR",
-          error
-        );
-
-        setError(
-          error.message
-        );
-
+        setError(error.message);
         setLoading(false);
-
         return;
       }
 
-      setBadge(
-        data.badge_number ||
-        ""
-      );
-
-      setWorkNumber(
-        data.work_number ||
-        ""
-      );
+      setBadge(data.badge_number || "");
+      setWorkNumber(data.work_number || "");
 
       setRank(
-        canSelectRank &&
-        ranks.includes(
-          data.rank
-        )
+        canSelectRank && ranks.includes(data.rank)
           ? data.rank
           : "Police Officer I"
       );
 
       setDivision(
-        divisions.includes(
-          data.division
-        )
+        divisions.includes(data.division)
           ? data.division
           : "Mission Row Division"
       );
+
+      const { data: windows } =
+        await supabase
+          .from("ftp_availability_windows")
+          .select("start_time,end_time")
+          .eq("profile_id", user.id);
+
+      if (windows && windows.length > 0) {
+        setAvailabilityWindows(
+          windows.map((window) => ({
+            start_time:
+              window.start_time.slice(0, 5),
+            end_time:
+              window.end_time.slice(0, 5),
+          }))
+        );
+      }
+
+      const { data: supervision } =
+        await supabase
+          .from("ftp_supervision_preferences")
+          .select("*")
+          .eq("profile_id", user.id)
+          .maybeSingle();
+
+      if (supervision) {
+        setAvailableForP1s(
+          supervision.available_for_p1s
+        );
+
+        setMaxP1s(
+          supervision.max_active_p1s || 4
+        );
+      }
 
       setLoading(false);
     }
@@ -173,105 +167,114 @@ export default function PersonalDetails({
     void loadProfile();
   }, [user]);
 
-  async function saveDetails(
-    event?: FormEvent
+  function updateWindow(
+    index: number,
+    field: keyof AvailabilityWindow,
+    value: string
   ) {
+    setAvailabilityWindows((current) =>
+      current.map((window, i) =>
+        i === index
+          ? {
+              ...window,
+              [field]: value,
+            }
+          : window
+      )
+    );
+  }
+
+  function addWindow() {
+    setAvailabilityWindows((current) => [
+      ...current,
+      {
+        start_time: "",
+        end_time: "",
+      },
+    ]);
+  }
+
+  function removeWindow(index: number) {
+    setAvailabilityWindows((current) =>
+      current.filter((_, i) => i !== index)
+    );
+  }
+
+  async function saveDetails(event?: FormEvent) {
     event?.preventDefault();
+
     setError("");
     setSuccess("");
 
     if (!badge.trim()) {
-      setError(
-        "Please enter your badge or serial number."
-      );
-
+      setError("Please enter your badge number.");
       return;
     }
 
     if (!workNumber.trim()) {
-      setError(
-        "Please enter your work number."
-      );
-
-      return;
-    }
-
-    const rankToSave =
-      canSelectRank
-        ? rank
-        : "Police Officer I";
-
-    if (
-      !ranks.includes(
-        rankToSave
-      )
-    ) {
-      setError(
-        "Please select a valid police rank."
-      );
-
-      return;
-    }
-
-    const divisionToSave =
-      canSelectDivision
-        ? division
-        : "Mission Row Division";
-
-    if (
-      !divisions.includes(
-        divisionToSave
-      )
-    ) {
-      setError(
-        "Please select a valid division."
-      );
-
+      setError("Please enter your work number.");
       return;
     }
 
     setSaving(true);
 
-    const {
-      error,
-    } = await supabase
-      .from("profiles")
-      .update({
-        badge_number:
-          badge.trim(),
-        work_number:
-          workNumber.trim(),
-        rank:
-          rankToSave,
-        division:
-          divisionToSave,
-        profile_complete:
-          true,
-      })
-      .eq(
-        "id",
-        user.id
-      );
+    const { error: profileError } =
+      await supabase
+        .from("profiles")
+        .update({
+          badge_number: badge.trim(),
+          work_number: workNumber.trim(),
+          rank: canSelectRank
+            ? rank
+            : "Police Officer I",
+          division: canSelectDivision
+            ? division
+            : "Mission Row Division",
+          profile_complete: true,
+        })
+        .eq("id", user.id);
 
-    if (error) {
-      console.error(
-        "PROFILE UPDATE ERROR",
-        error
-      );
-
-      setError(
-        error.message
-      );
-
+    if (profileError) {
+      setError(profileError.message);
       setSaving(false);
-
       return;
     }
 
-    setSuccess(
-      "Personal details updated successfully!"
-    );
+    await supabase
+      .from("ftp_availability_windows")
+      .delete()
+      .eq("profile_id", user.id);
 
+    const validWindows =
+      availabilityWindows.filter(
+        (window) =>
+          window.start_time &&
+          window.end_time
+      );
+
+    if (validWindows.length > 0) {
+      await supabase
+        .from("ftp_availability_windows")
+        .insert(
+          validWindows.map((window) => ({
+            profile_id: user.id,
+            start_time: window.start_time,
+            end_time: window.end_time,
+          }))
+        );
+    }
+
+    if (canSupervise) {
+      await supabase
+        .from("ftp_supervision_preferences")
+        .upsert({
+          profile_id: user.id,
+          available_for_p1s: availableForP1s,
+          max_active_p1s: maxP1s,
+        });
+    }
+
+    setSuccess("Profile updated successfully!");
     setSaving(false);
 
     setTimeout(() => {
@@ -282,203 +285,130 @@ export default function PersonalDetails({
   }
 
   if (loading) {
-    return (
-      <main style={pageStyle}>
-        <p>
-          Loading profile...
-        </p>
-      </main>
-    );
+    return <main style={pageStyle}>Loading profile...</main>;
   }
 
   return (
     <main style={pageStyle}>
-      <form
-        onSubmit={saveDetails}
-        style={formStyle}
-      >
+      <form onSubmit={saveDetails} style={formStyle}>
         <div style={cardStyle}>
-        <h1>
-          Personal Details
-        </h1>
+          <h1>Personal Details</h1>
 
-        <p style={subTextStyle}>
-          Update your FTP profile
-          information.
-        </p>
-
-        <label style={labelStyle}>
-          Badge / Serial Number
-        </label>
-
-        <input
-          placeholder="Enter badge or serial number"
-          value={badge}
-          onChange={(event) =>
-            setBadge(
-              event.target.value
-            )
-          }
-          required
-          disabled={saving}
-          style={inputStyle}
-        />
-
-        <label style={labelStyle}>
-          Work Number
-        </label>
-
-        <input
-          placeholder="Enter work number"
-          value={
-            workNumber
-          }
-          onChange={(event) =>
-            setWorkNumber(
-              event.target.value
-            )
-          }
-          required
-          disabled={saving}
-          style={inputStyle}
-        />
-
-        {canSelectRank ? (
-          <>
-            <label style={labelStyle}>
-              Police Rank
-            </label>
-
-            <select
-              value={rank}
-              onChange={(event) =>
-                setRank(
-                  event.target.value
-                )
-              }
-              disabled={saving}
-              style={inputStyle}
-            >
-              {ranks.map(
-                (rankOption) => (
-                  <option
-                    key={
-                      rankOption
-                    }
-                    value={
-                      rankOption
-                    }
-                  >
-                    {
-                      rankOption
-                    }
-                  </option>
-                )
-              )}
-            </select>
-
-            <p style={rankHelpStyle}>
-              Your FTP portal role is
-              selected separately. This
-              field is only for your
-              in-character police rank.
-            </p>
-          </>
-        ) : (
-          <div style={fixedDivisionStyle}>
-            <p style={fixedDivisionLabelStyle}>
-              Police Rank
-            </p>
-
-            <p style={fixedDivisionValueStyle}>
-              Police Officer I
-            </p>
-
-            <p style={fixedDivisionHelpStyle}>
-              Probationary Officers
-              cannot change their rank
-              or FTP role.
-            </p>
-          </div>
-        )}
-
-        {canSelectDivision ? (
-          <>
-            <label style={labelStyle}>
-              Division
-            </label>
-
-            <select
-              value={division}
-              onChange={(event) =>
-                setDivision(
-                  event.target.value
-                )
-              }
-              disabled={saving}
-              style={inputStyle}
-            >
-              {divisions.map(
-                (divisionOption) => (
-                  <option
-                    key={
-                      divisionOption
-                    }
-                    value={
-                      divisionOption
-                    }
-                  >
-                    {
-                      divisionOption
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </>
-        ) : (
-          <div style={fixedDivisionStyle}>
-            <p style={fixedDivisionLabelStyle}>
-              Division
-            </p>
-
-            <p style={fixedDivisionValueStyle}>
-              Mission Row Division
-            </p>
-
-            <p style={fixedDivisionHelpStyle}>
-              New Probationary Officers
-              begin in Mission Row
-              Division.
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <p style={errorStyle}>
-            {error}
+          <p style={subTextStyle}>
+            Update your FTP profile information.
           </p>
-        )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          style={{
-            ...buttonStyle,
-            opacity:
-              saving
-                ? 0.7
-                : 1,
-            cursor:
-              saving
-                ? "not-allowed"
-                : "pointer",
-          }}
-        >
-          {saving
-            ? "Saving..."
-            : "Save Details"}
-        </button>
+          <label style={labelStyle}>Badge / Serial Number</label>
+          <input
+            value={badge}
+            onChange={(e) => setBadge(e.target.value)}
+            style={inputStyle}
+            disabled={saving}
+          />
+
+          <label style={labelStyle}>Work Number</label>
+          <input
+            value={workNumber}
+            onChange={(e) => setWorkNumber(e.target.value)}
+            style={inputStyle}
+            disabled={saving}
+          />
+
+          <div style={sectionHeaderStyle}>
+            <h2>Server Availability</h2>
+            <p>
+              Tell the FTP system when you are normally available on GTA:W server time.
+            </p>
+          </div>
+
+          {availabilityWindows.map((window, index) => (
+            <div key={index}>
+              <input
+                type="time"
+                value={window.start_time}
+                onChange={(e) =>
+                  updateWindow(
+                    index,
+                    "start_time",
+                    e.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+
+              <input
+                type="time"
+                value={window.end_time}
+                onChange={(e) =>
+                  updateWindow(
+                    index,
+                    "end_time",
+                    e.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+
+              {availabilityWindows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeWindow(index)}
+                >
+                  Remove Window
+                </button>
+              )}
+            </div>
+          ))}
+
+          <button type="button" style={secondaryButtonStyle} onClick={addWindow}>
+            + Add Availability Window
+          </button>
+
+          {canSupervise && (
+            <>
+              <h2>FTP Supervision</h2>
+
+              <label style={labelStyle}>
+                Available for P1 assignment?
+              </label>
+
+              <select
+                value={availableForP1s ? "yes" : "no"}
+                onChange={(e) =>
+                  setAvailableForP1s(
+                    e.target.value === "yes"
+                  )
+                }
+                style={inputStyle}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+
+              <label style={labelStyle}>
+                Maximum P1s
+              </label>
+
+              <input
+                type="number"
+                value={maxP1s}
+                onChange={(e) =>
+                  setMaxP1s(Number(e.target.value))
+                }
+                style={inputStyle}
+              />
+            </>
+          )}
+
+          {error && <p style={errorStyle}>{error}</p>}
+
+          <button
+            type="submit"
+            disabled={saving}
+            style={buttonStyle}
+          >
+            {saving ? "Saving..." : "Save Details"}
+          </button>
         </div>
       </form>
 
@@ -491,127 +421,83 @@ export default function PersonalDetails({
   );
 }
 
+const pageStyle = {
+  minHeight: "100vh",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: "#0f172a",
+  color: "white",
+  padding: "24px",
+};
+
 const formStyle = {
   width: "100%",
   maxWidth: "420px",
 };
 
-const pageStyle = {
-  minHeight: "100vh",
-  display: "flex",
-  alignItems: "center",
-  justifyContent:
-    "center",
-  backgroundColor:
-    "#0f172a",
-  color: "white",
-  fontFamily:
-    "Arial, sans-serif",
-  padding: "24px",
-};
-
 const cardStyle = {
-  width: "100%",
-  maxWidth: "420px",
-  backgroundColor:
-    "#1e293b",
+  backgroundColor: "#111827",
   padding: "40px",
-  borderRadius: "16px",
-  border:
-    "1px solid #334155",
+  borderRadius: "20px",
+  border: "1px solid #334155",
+  boxShadow: "0 20px 40px rgba(0,0,0,0.35)",
 };
 
 const inputStyle = {
   width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding: "13px",
+  boxSizing: "border-box" as const,
+  padding: "14px",
   marginBottom: "14px",
-  backgroundColor:
-    "#0f172a",
+  backgroundColor: "#0b1220",
   color: "white",
-  border:
-    "1px solid #475569",
-  borderRadius: "8px",
-};
-
-const buttonStyle = {
-  width: "100%",
-  padding: "13px",
-  backgroundColor:
-    "#2563eb",
-  color: "white",
-  border: "none",
-  borderRadius: "8px",
-};
-
-const subTextStyle = {
-  color: "#94a3b8",
-  marginBottom: "20px",
+  border: "1px solid #334155",
+  borderRadius: "10px",
 };
 
 const labelStyle = {
   display: "block",
   marginBottom: "6px",
-  color: "#cbd5e1",
-  fontSize: "14px",
-  fontWeight: 600,
 };
 
-const rankHelpStyle = {
-  marginTop: "-4px",
-  marginBottom: "16px",
+const subTextStyle = {
   color: "#94a3b8",
-  fontSize: "12px",
-  lineHeight: 1.5,
 };
 
-const fixedDivisionStyle = {
+const buttonStyle = {
+  width: "100%",
   padding: "14px",
-  marginBottom: "16px",
-  backgroundColor:
-    "#0f172a",
-  border:
-    "1px solid #334155",
-  borderRadius: "8px",
-};
-
-const fixedDivisionLabelStyle = {
-  margin:
-    "0 0 5px",
-  color: "#94a3b8",
-  fontSize: "13px",
-};
-
-const fixedDivisionValueStyle = {
-  margin:
-    "0 0 5px",
-  fontWeight: 800,
-};
-
-const fixedDivisionHelpStyle = {
-  margin: 0,
-  color: "#94a3b8",
-  fontSize: "12px",
-  lineHeight: 1.5,
+  backgroundColor: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: "10px",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
 const errorStyle = {
   color: "#f87171",
-  marginTop: "0",
-  marginBottom: "14px",
 };
 
 const toastStyle = {
-  position:
-    "fixed" as const,
+  position: "fixed" as const,
   bottom: "25px",
   right: "25px",
-  backgroundColor:
-    "#16a34a",
+};
+
+
+const sectionHeaderStyle = {
+  marginTop: "28px",
+  marginBottom: "16px",
+};
+
+const secondaryButtonStyle = {
+  width: "100%",
+  padding: "12px",
+  backgroundColor: "#1e40af",
   color: "white",
-  padding: "15px 20px",
+  border: "none",
   borderRadius: "10px",
-  boxShadow:
-    "0 10px 20px rgba(0,0,0,0.3)",
+  cursor: "pointer",
+  marginBottom: "16px",
 };

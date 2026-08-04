@@ -24,9 +24,12 @@ import Records from "../components/Records";
 import DORForm from "../components/DORForm";
 import Settings from "../components/Settings";
 import MyNotebook from "../components/MyNotebook";
-import P1Records from "../components/P1Records";
 import RoleRequests from "../components/RoleRequests";
 import MyFTOFile from "../components/MyFTOFile";
+import PersonnelManagement from "../components/PersonnelManagement";
+import TrainingCalendar from "../components/TrainingCalendar";
+import FieldTrainingManagementDashboard from "../components/FieldTrainingManagementDashboard";
+import BatchManagement from "../components/BatchManagement";
 
 type InitialRole =
   | "Probationary Officer"
@@ -35,7 +38,7 @@ type InitialRole =
 const onboardingBypassRoles = [
   "Field Training Manager",
   "Field Training Supervisor",
-  "STAFF",
+  "FTP Staff",
   "LSPD STAFF",
 ];
 
@@ -616,6 +619,9 @@ export default function Home() {
             openDOR={
               openDOR
             }
+            onNavigate={
+              setActivePage
+            }
           />
         );
 
@@ -632,13 +638,9 @@ export default function Home() {
 
       case "P1 Records":
         return (
-          <P1Records
-            openNotebook={
-              openNotebook
-            }
-            openDOR={
-              openDOR
-            }
+          <Records
+            user={user}
+            openDOR={openDOR}
           />
         );
 
@@ -653,7 +655,12 @@ export default function Home() {
         );
 
       case "Records":
-        return <Records />;
+        return (
+          <Records
+            user={user}
+            openDOR={openDOR}
+          />
+        );
 
       case "Role Requests":
         return (
@@ -665,6 +672,41 @@ export default function Home() {
       case "My FTO File":
         return (
           <MyFTOFile
+            user={user}
+          />
+        );
+
+      case "Personnel Management":
+        return (
+          <PersonnelManagement
+            currentUser={user}
+          />
+        );
+
+      case "Field Training Management Dashboard":
+        return (
+          <FieldTrainingManagementDashboard
+            user={user}
+          />
+        );
+
+      case "FTP Management":
+        return (
+          <FieldTrainingManagementDashboard
+            user={user}
+          />
+        );
+
+      case "Batch Management":
+        return (
+          <BatchManagement
+            user={user}
+          />
+        );
+
+      case "Training Calendar":
+        return (
+          <TrainingCalendar
             user={user}
           />
         );

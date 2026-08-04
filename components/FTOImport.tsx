@@ -34,6 +34,11 @@ export default function FTOImport({
   );
 
   const [
+    profileId,
+    setProfileId,
+  ] = useState("");
+
+  const [
     bbcode,
     setBBCode,
   ] = useState("");
@@ -59,14 +64,59 @@ export default function FTOImport({
   ] = useState<any>(null);
 
   useEffect(() => {
-    loadDetails();
-  }, [user]);
+    void loadDetails();
+  }, [
+    user?.id,
+  ]);
+
+  async function resolveCurrentUserId() {
+    const {
+      data,
+      error:
+        authError,
+    } =
+      await supabase.auth.getUser();
+
+    if (authError) {
+      throw authError;
+    }
+
+    const authenticatedUserId =
+      data.user?.id ?? "";
+
+    const suppliedUserId =
+      typeof user?.id ===
+        "string"
+        ? user.id.trim()
+        : "";
+
+    const resolvedUserId =
+      authenticatedUserId ||
+      suppliedUserId;
+
+    if (!resolvedUserId) {
+      throw new Error(
+        "Your login account could not be identified. Please log out and sign in again."
+      );
+    }
+
+    return resolvedUserId;
+  }
 
   async function loadDetails() {
     setLoading(true);
     setError("");
+    setProfile(null);
+    setExistingRequest(null);
 
     try {
+      const resolvedUserId =
+        await resolveCurrentUserId();
+
+      setProfileId(
+        resolvedUserId
+      );
+
       const {
         data: profileData,
         error: profileError,
@@ -81,12 +131,18 @@ export default function FTOImport({
         `)
         .eq(
           "id",
-          user.id
+          resolvedUserId
         )
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         throw profileError;
+      }
+
+      if (!profileData) {
+        throw new Error(
+          "Your FTP profile no longer exists. This can happen after a test account is deleted. Please log out and sign in with an active account."
+        );
       }
 
       setProfile(
@@ -103,7 +159,7 @@ export default function FTOImport({
         .select("*")
         .eq(
           "profile_id",
-          user.id
+          resolvedUserId
         )
         .order(
           "created_at",
@@ -135,9 +191,10 @@ export default function FTOImport({
       );
 
       setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Your FTO import details could not be loaded."
+        getReadableError(
+          loadError,
+          "Your FTO import details could not be loaded."
+        )
       );
     } finally {
       setLoading(false);
@@ -147,13 +204,24 @@ export default function FTOImport({
   async function submitRequest() {
     setError("");
 
-    if (
-      !bbcode.trim()
-    ) {
+    if (!profileId) {
+      setError(
+        "Your login account could not be identified. Please log out and sign in again."
+      );
+      return;
+    }
+
+    if (!profile) {
+      setError(
+        "Your FTP profile could not be loaded. Please log out and sign in again."
+      );
+      return;
+    }
+
+    if (!bbcode.trim()) {
       setError(
         "Please paste your current FTO file BBCode."
       );
-
       return;
     }
 
@@ -170,7 +238,7 @@ export default function FTOImport({
         .upsert(
           {
             profile_id:
-              user.id,
+              profileId,
             original_bbcode:
               bbcode.trim(),
             parsed_data:
@@ -208,12 +276,10 @@ export default function FTOImport({
         })
         .eq(
           "id",
-          user.id
+          profileId
         );
 
-      if (
-        profileUpdateError
-      ) {
+      if (profileUpdateError) {
         throw profileUpdateError;
       }
 
@@ -229,9 +295,10 @@ export default function FTOImport({
       );
 
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Your FTO request could not be submitted."
+        getReadableError(
+          submitError,
+          "Your FTO request could not be submitted."
+        )
       );
     } finally {
       setSubmitting(false);
@@ -277,7 +344,7 @@ export default function FTOImport({
             label="Officer"
             value={
               profile?.name ??
-              user.name ??
+              user?.name ??
               "Unknown"
             }
           />
@@ -328,7 +395,10 @@ export default function FTOImport({
             )
           }
           placeholder="[font=Arial]Paste your complete FTO file BBCode here...[/font]"
-          disabled={submitting}
+          disabled={
+            submitting ||
+            !profile
+          }
           style={textareaStyle}
         />
 
@@ -360,18 +430,23 @@ export default function FTOImport({
 
           <button
             type="button"
-            onClick={
-              submitRequest
+            onClick={() =>
+              void submitRequest()
             }
-            disabled={submitting}
+            disabled={
+              submitting ||
+              !profile
+            }
             style={{
               ...buttonStyle,
               opacity:
-                submitting
+                submitting ||
+                !profile
                   ? 0.7
                   : 1,
               cursor:
-                submitting
+                submitting ||
+                !profile
                   ? "not-allowed"
                   : "pointer",
             }}
@@ -386,6 +461,40 @@ export default function FTOImport({
       </div>
     </main>
   );
+}
+
+function getReadableError(
+  error: unknown,
+  fallback: string
+) {
+  if (
+    error instanceof Error &&
+    error.message
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error
+  ) {
+    const message =
+      String(
+        (
+          error as {
+            message?: unknown;
+          }
+        ).message ??
+          ""
+      );
+
+    if (message) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
 
 function Detail({
@@ -528,19 +637,8 @@ const errorStyle = {
   border:
     "1px solid #991b1b",
   borderRadius: "8px",
+  lineHeight: 1.5,
 };
-
-const buttonStyle = {
-  width: "100%",
-  padding: "14px",
-  color: "white",
-  backgroundColor: "#db2777",
-  border: "none",
-  borderRadius: "8px",
-  fontSize: "16px",
-  fontWeight: 800,
-};
-
 
 const buttonRowStyle = {
   display: "flex",
@@ -559,4 +657,16 @@ const skipButtonStyle = {
   fontSize: "16px",
   fontWeight: 800,
   cursor: "pointer",
+};
+
+const buttonStyle = {
+  flex: 2,
+  minWidth: "220px",
+  padding: "14px",
+  color: "white",
+  backgroundColor: "#db2777",
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "16px",
+  fontWeight: 800,
 };

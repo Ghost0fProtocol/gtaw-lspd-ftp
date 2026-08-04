@@ -1,28 +1,77 @@
 import { supabase } from "./supabase";
 
+import type {
+  NotebookSection,
+  PPOWEROutcome,
+  TrainingStage,
+} from "./types";
 
 // ================================
-// TYPES
+// UPDATE TYPES
 // ================================
 
-export type NotebookItem = {
-  id: string;
-  label: string;
-  completed: boolean;
-};
+type TraineeUpdates = {
+  status?: string;
+  notebook?: NotebookSection[];
 
-export type NotebookSection = {
-  section: string;
-  items: NotebookItem[];
-};
+  training_stage?: TrainingStage;
 
+  week_1_ppower_outcome?:
+    | PPOWEROutcome;
+
+  week_2_ppower_outcome?:
+    | PPOWEROutcome;
+
+  week_1_ppower_completed_at?:
+    | string
+    | null;
+
+  week_2_ppower_completed_at?:
+    | string
+    | null;
+
+  fpp_started_at?:
+    | string
+    | null;
+
+  final_evaluation_unlocked_at?:
+    | string
+    | null;
+
+  final_evaluation_completed_at?:
+    | string
+    | null;
+
+  final_evaluation_dor_id?:
+    | string
+    | null;
+
+  progression_updated_at?:
+    | string
+    | null;
+
+  progression_updated_by?:
+    | string
+    | null;
+
+  promoted_to_p2_at?:
+    | string
+    | null;
+
+  promoted_to_p2_by?:
+    | string
+    | null;
+
+  assigned_ftm?:
+    | string
+    | null;
+};
 
 // ================================
 // GET ALL TRAINEES
 // ================================
 
 export async function getTrainees() {
-
   const {
     data,
     error,
@@ -30,9 +79,31 @@ export async function getTrainees() {
     .from("trainees")
     .select(`
       id,
+      profile_id,
       status,
       start_date,
       notebook,
+      assigned_ftm,
+
+      training_stage,
+
+      week_1_ppower_outcome,
+      week_2_ppower_outcome,
+
+      week_1_ppower_completed_at,
+      week_2_ppower_completed_at,
+
+      fpp_started_at,
+
+      final_evaluation_unlocked_at,
+      final_evaluation_completed_at,
+      final_evaluation_dor_id,
+
+      progression_updated_at,
+      progression_updated_by,
+
+      promoted_to_p2_at,
+      promoted_to_p2_by,
 
       profile:profiles!trainees_profile_id_fkey (
         id,
@@ -41,7 +112,8 @@ export async function getTrainees() {
         role,
         badge_number,
         work_number,
-        rank
+        rank,
+        division
       ),
 
       ftm:profiles!trainees_assigned_ftm_fkey (
@@ -51,7 +123,6 @@ export async function getTrainees() {
     `);
 
   if (error) {
-
     console.error(
       "GET TRAINEES ERROR",
       JSON.stringify(
@@ -62,18 +133,93 @@ export async function getTrainees() {
     );
 
     throw error;
-
   }
 
   console.log(
-    "TRAINEES WITH PROFILE DATA:",
+    "TRAINEES WITH PROFILE AND PROGRESSION DATA:",
     data
   );
 
   return data ?? [];
-
 }
 
+// ================================
+// GET ONE TRAINEE
+// ================================
+
+export async function getTrainee(
+  traineeId: string
+) {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("trainees")
+    .select(`
+      id,
+      profile_id,
+      status,
+      start_date,
+      notebook,
+      assigned_ftm,
+
+      training_stage,
+
+      week_1_ppower_outcome,
+      week_2_ppower_outcome,
+
+      week_1_ppower_completed_at,
+      week_2_ppower_completed_at,
+
+      fpp_started_at,
+
+      final_evaluation_unlocked_at,
+      final_evaluation_completed_at,
+      final_evaluation_dor_id,
+
+      progression_updated_at,
+      progression_updated_by,
+
+      promoted_to_p2_at,
+      promoted_to_p2_by,
+
+      profile:profiles!trainees_profile_id_fkey (
+        id,
+        name,
+        reference,
+        role,
+        badge_number,
+        work_number,
+        rank,
+        division
+      ),
+
+      ftm:profiles!trainees_assigned_ftm_fkey (
+        id,
+        name
+      )
+    `)
+    .eq(
+      "id",
+      traineeId
+    )
+    .single();
+
+  if (error) {
+    console.error(
+      "GET TRAINEE ERROR",
+      JSON.stringify(
+        error,
+        null,
+        2
+      )
+    );
+
+    throw error;
+  }
+
+  return data;
+}
 
 // ================================
 // UPDATE TRAINEE
@@ -81,12 +227,8 @@ export async function getTrainees() {
 
 export async function updateTrainee(
   traineeId: string,
-  updates: {
-    status?: string;
-    notebook?: NotebookSection[];
-  }
+  updates: TraineeUpdates
 ) {
-
   console.log(
     "UPDATING TRAINEE:",
     traineeId
@@ -111,7 +253,6 @@ export async function updateTrainee(
     .single();
 
   if (error) {
-
     console.error(
       "UPDATE TRAINEE ERROR",
       JSON.stringify(
@@ -122,7 +263,6 @@ export async function updateTrainee(
     );
 
     throw error;
-
   }
 
   console.log(
@@ -131,9 +271,7 @@ export async function updateTrainee(
   );
 
   return data;
-
 }
-
 
 // ================================
 // UPDATE PROFILE
@@ -147,9 +285,10 @@ export async function updateTraineeProfile(
     badge_number?: string;
     work_number?: string;
     rank?: string;
+    role?: string;
+    division?: string;
   }
 ) {
-
   const {
     data,
     error,
@@ -164,7 +303,6 @@ export async function updateTraineeProfile(
     .single();
 
   if (error) {
-
     console.error(
       "UPDATE PROFILE ERROR",
       JSON.stringify(
@@ -175,13 +313,10 @@ export async function updateTraineeProfile(
     );
 
     throw error;
-
   }
 
   return data;
-
 }
-
 
 // ================================
 // ASSIGN FTM
@@ -191,14 +326,14 @@ export async function assignFTM(
   traineeId: string,
   ftmId: string | null
 ) {
-
   const {
     data,
     error,
   } = await supabase
     .from("trainees")
     .update({
-      assigned_ftm: ftmId,
+      assigned_ftm:
+        ftmId,
     })
     .eq(
       "id",
@@ -208,7 +343,6 @@ export async function assignFTM(
     .single();
 
   if (error) {
-
     console.error(
       "ASSIGN FTM ERROR",
       JSON.stringify(
@@ -219,9 +353,7 @@ export async function assignFTM(
     );
 
     throw error;
-
   }
 
   return data;
-
 }

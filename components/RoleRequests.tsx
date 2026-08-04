@@ -12,6 +12,10 @@ import {
   parseFTOFile,
 } from "../lib/parseFTOFile";
 
+import {
+  canManageRoleRequests,
+} from "../lib/permissions";
+
 type Props = {
   user: any;
 };
@@ -46,13 +50,6 @@ type FTOImportRequest = {
   updated_at: string | null;
   profile?: OfficerProfile;
 };
-
-const allowedReviewerRoles = [
-  "Field Training Manager",
-  "Field Training Supervisor",
-  "STAFF",
-  "LSPD STAFF",
-];
 
 export default function RoleRequests({
   user,
@@ -109,7 +106,7 @@ export default function RoleRequests({
       : null;
 
   const canReview =
-    allowedReviewerRoles.includes(
+    canManageRoleRequests(
       user?.role
     );
 

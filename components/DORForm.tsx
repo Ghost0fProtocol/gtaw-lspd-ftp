@@ -14,9 +14,16 @@ import {
   generateDORBBCode,
 } from "../lib/generateDORBBCode";
 
+import { addTrainingEntryFromDOR } from "../lib/fto";
+
 type Props = {
   traineeId?: string;
 };
+
+type PatrolType =
+  | "Standard"
+  | "FPP"
+  | "Final Evaluation";
 
 type Trainee = {
   id: string;
@@ -24,6 +31,7 @@ type Trainee = {
   rank: string;
   badgeNumber: string;
   workNumber: string;
+  trainingStage: string;
 };
 
 type NotebookItem = {
@@ -156,6 +164,13 @@ export default function DORForm({
 
   const [selectedTrainee, setSelectedTrainee] =
     useState("");
+
+  const [
+    patrolType,
+    setPatrolType,
+  ] = useState<PatrolType>(
+    "Standard"
+  );
 
   const [ftoId, setFtoId] =
     useState("");
@@ -293,6 +308,9 @@ export default function DORForm({
               workNumber:
                 trainee.profile?.work_number ??
                 "",
+              trainingStage:
+                trainee.training_stage ??
+                "Week 1",
             })
           )
         );
@@ -652,6 +670,12 @@ export default function DORForm({
           null
       );
 
+      setPatrolType(
+        normalisePatrolType(
+          data.patrol_type
+        )
+      );
+
       setFormData(
         (current) => ({
           ...current,
@@ -787,6 +811,10 @@ export default function DORForm({
     setGeneratedBBCode("");
 
     if (id === "") {
+      setPatrolType(
+        "Standard"
+      );
+
       setFormData(
         (current) => ({
           ...current,
@@ -814,6 +842,24 @@ export default function DORForm({
     if (!trainee) {
       return;
     }
+
+    const storedPatrolType =
+      sessionStorage.getItem(
+        `ftp-patrol-type:${id}`
+      );
+
+    const nextPatrolType =
+      storedPatrolType ===
+        "Final Evaluation"
+        ? "Final Evaluation"
+        : trainee.trainingStage ===
+            "FPP"
+          ? "FPP"
+          : "Standard";
+
+    setPatrolType(
+      nextPatrolType
+    );
 
     setFormData(
       (current) => ({
@@ -994,6 +1040,8 @@ export default function DORForm({
         evaluationRatings,
       completed_notebook_items:
         selectedNotebookItemIds,
+      patrol_type:
+        patrolType,
       status:
         "draft",
       started_by:
@@ -1307,6 +1355,8 @@ export default function DORForm({
         completed_notebook_items:
           selectedNotebookItemIds,
         bbcode,
+        patrol_type:
+          patrolType,
         status:
           "submitted",
         started_by:
@@ -1320,8 +1370,12 @@ export default function DORForm({
           submittedAt,
       };
 
+      let savedDORId =
+        draftId;
+
       if (draftId) {
         const {
+          data,
           error,
         } = await supabase
           .from("dors")
@@ -1331,29 +1385,42 @@ export default function DORForm({
           .eq(
             "id",
             draftId
-          );
+          )
+          .select("id")
+          .single();
 
         if (error) {
           throw error;
         }
+
+        savedDORId =
+          data.id;
       } else {
         const {
+          data,
           error,
         } = await supabase
           .from("dors")
           .insert(
             submittedPayload
-          );
+          )
+          .select("id")
+          .single();
 
         if (error) {
           throw error;
         }
+
+        savedDORId =
+          data.id;
       }
 
       const savedPatrolNumber =
         formData.patrolNumber;
 
       let checklistUpdateWarning = "";
+      let ftoFileUpdateWarning = "";
+      let progressionUpdateWarning = "";
 
       if (
         selectedNotebookItemIds.length > 0
@@ -1386,15 +1453,117 @@ export default function DORForm({
         }
       }
 
+      try {
+        await addTrainingEntryFromDOR({
+          ftoProfileId:
+            ftoId,
+          traineeName:
+            formData.probationaryOfficer,
+          patrolDate:
+            formData.date,
+          duration:
+            formData.duration,
+        });
+      } catch (ftoFileError) {
+        console.error(
+          "UPDATE FTO FILE FROM DOR ERROR",
+          ftoFileError
+        );
+
+        ftoFileUpdateWarning =
+          " The DOR saved, but the FTO file could not be updated. Please contact FTP staff before submitting the DOR again.";
+      }
+
+      if (
+        patrolType ===
+          "Final Evaluation" &&
+        savedDORId
+      ) {
+        try {
+          const {
+            data: sessionData,
+            error: sessionError,
+          } =
+            await supabase.auth.getSession();
+
+          if (sessionError) {
+            throw sessionError;
+          }
+
+          const accessToken =
+            sessionData.session
+              ?.access_token;
+
+          if (!accessToken) {
+            throw new Error(
+              "The login session could not be verified for Final Evaluation completion."
+            );
+          }
+
+          const response =
+            await fetch(
+              "/api/ftp",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                  Authorization:
+                    `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                  action:
+                    "completeFinalEvaluation",
+                  traineeId:
+                    selectedTrainee,
+                  dorId:
+                    savedDORId,
+                }),
+              }
+            );
+
+          const result =
+            await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              result?.error ??
+                "Final Evaluation progression could not be completed."
+            );
+          }
+        } catch (
+          progressionError
+        ) {
+          console.error(
+            "COMPLETE FINAL EVALUATION ERROR",
+            progressionError
+          );
+
+          progressionUpdateWarning =
+            ` The DOR saved as the Final Evaluation, but the trainee progression could not be completed: ${
+              progressionError instanceof Error
+                ? progressionError.message
+                : "Unknown error."
+            }`;
+        }
+      }
+
+      sessionStorage.removeItem(
+        `ftp-patrol-type:${selectedTrainee}`
+      );
+
       setGeneratedBBCode(
         bbcode
       );
 
       setSuccessMessage(
-        `DOR Patrol ${savedPatrolNumber} saved successfully.${checklistUpdateWarning} The form has been cleared and the BBCode is ready to copy below.`
+        `DOR Patrol ${savedPatrolNumber} saved successfully.${checklistUpdateWarning}${ftoFileUpdateWarning}${progressionUpdateWarning} The form has been cleared and the BBCode is ready to copy below.`
       );
 
       setSelectedTrainee("");
+      setPatrolType(
+        "Standard"
+      );
       draftIdRef.current =
         null;
       setDraftId(null);
@@ -1475,7 +1644,16 @@ export default function DORForm({
   }
 
   function clearForm() {
+    if (selectedTrainee) {
+      sessionStorage.removeItem(
+        `ftp-patrol-type:${selectedTrainee}`
+      );
+    }
+
     setSelectedTrainee("");
+    setPatrolType(
+      "Standard"
+    );
     draftIdRef.current =
       null;
     setDraftId(null);
@@ -1797,6 +1975,35 @@ export default function DORForm({
               Use Current UTC Date
               &amp; Time
             </button>
+          </div>
+
+          <div
+            style={patrolTypeBannerStyle}
+          >
+            <div>
+              <p style={patrolTypeLabelStyle}>
+                PATROL TYPE
+              </p>
+
+              <strong>
+                {patrolType}
+              </strong>
+            </div>
+
+            <span
+              style={{
+                ...patrolTypeBadgeStyle,
+                ...(patrolType ===
+                "Final Evaluation"
+                  ? finalEvaluationBadgeStyle
+                  : patrolType ===
+                      "FPP"
+                    ? fppBadgeStyle
+                    : standardBadgeStyle),
+              }}
+            >
+              {patrolType}
+            </span>
           </div>
 
           <div
@@ -2337,7 +2544,10 @@ export default function DORForm({
           >
             {saving
               ? "Submitting DOR..."
-              : "Submit Final DOR & Generate BBCode"}
+              : patrolType ===
+                  "Final Evaluation"
+                ? "Submit Final Evaluation DOR & Generate BBCode"
+                : "Submit Final DOR & Generate BBCode"}
           </button>
         </div>
       </form>
@@ -2398,6 +2608,20 @@ export default function DORForm({
       )}
     </div>
   );
+}
+
+function normalisePatrolType(
+  value: unknown
+): PatrolType {
+  if (
+    value === "FPP" ||
+    value ===
+      "Final Evaluation"
+  ) {
+    return value;
+  }
+
+  return "Standard";
 }
 
 function getDraftStatusText(
@@ -2481,6 +2705,57 @@ function DraftAgeWarning({
     </div>
   );
 }
+
+
+const patrolTypeBannerStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  alignItems: "center",
+  gap: "16px",
+  padding: "14px 16px",
+  marginTop: "20px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+  flexWrap: "wrap" as const,
+};
+
+const patrolTypeLabelStyle = {
+  margin: "0 0 5px",
+  color: "#94a3b8",
+  fontSize: "11px",
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+};
+
+const patrolTypeBadgeStyle = {
+  padding: "6px 10px",
+  border: "1px solid",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 900,
+};
+
+const standardBadgeStyle = {
+  color: "#cbd5e1",
+  backgroundColor: "#334155",
+  borderColor: "#475569",
+};
+
+const fppBadgeStyle = {
+  color: "#fde68a",
+  backgroundColor:
+    "rgba(120, 53, 15, 0.3)",
+  borderColor: "#a16207",
+};
+
+const finalEvaluationBadgeStyle = {
+  color: "#fed7aa",
+  backgroundColor:
+    "rgba(154, 52, 18, 0.3)",
+  borderColor: "#ea580c",
+};
 
 const cardStyle = {
   padding: "24px",
