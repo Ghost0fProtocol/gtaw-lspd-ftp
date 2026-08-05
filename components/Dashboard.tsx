@@ -1513,6 +1513,15 @@ export default function Dashboard({
                 outstandingDORs={
                   draftAlerts.length
                 }
+                onOpenOutstandingDOR={
+                  draftAlerts[0]
+                    ? () =>
+                        openDOR(
+                          draftAlerts[0]
+                            .traineeId
+                        )
+                    : undefined
+                }
                 onOpenCalendar={() =>
                   onNavigate(
                     "Batch Management"
@@ -2838,6 +2847,7 @@ function CalendarPanel({
   canManageOperations,
   trainees,
   outstandingDORs,
+  onOpenOutstandingDOR,
   onOpenCalendar,
 }: {
   events: CalendarEvent[];
@@ -2845,6 +2855,7 @@ function CalendarPanel({
   canManageOperations: boolean;
   trainees: any[];
   outstandingDORs: number;
+  onOpenOutstandingDOR?: () => void;
   onOpenCalendar: () => void;
 }) {
   const orderedEvents =
@@ -2997,7 +3008,24 @@ function CalendarPanel({
             </strong>
           </div>
 
-          <div
+          <button
+            type="button"
+            onClick={
+              onOpenOutstandingDOR
+            }
+            disabled={
+              !onOpenOutstandingDOR
+            }
+            aria-label={
+              outstandingDORs > 0
+                ? `Open outstanding DOR. ${outstandingDORs} outstanding.`
+                : "No outstanding DORs"
+            }
+            title={
+              outstandingDORs > 0
+                ? "Open the oldest outstanding DOR"
+                : "No outstanding DORs"
+            }
             style={{
               ...operationsAlertStyle,
               borderColor:
@@ -3008,6 +3036,14 @@ function CalendarPanel({
                 outstandingDORs > 0
                   ? "rgba(127, 29, 29, 0.28)"
                   : "rgba(20, 83, 45, 0.24)",
+              cursor:
+                outstandingDORs > 0
+                  ? "pointer"
+                  : "default",
+              opacity:
+                outstandingDORs > 0
+                  ? 1
+                  : 0.82,
             }}
           >
             <span style={operationsAlertLabelStyle}>
@@ -3017,7 +3053,13 @@ function CalendarPanel({
             <strong style={operationsAlertValueStyle}>
               {outstandingDORs}
             </strong>
-          </div>
+
+            {outstandingDORs > 0 && (
+              <span style={operationsAlertActionStyle}>
+                Open DOR →
+              </span>
+            )}
+          </button>
         </div>
       )}
 
@@ -4325,11 +4367,24 @@ const operationsAlertGridStyle = {
 };
 
 const operationsAlertStyle = {
+  width: "100%",
   display: "grid",
   gap: "7px",
   padding: "12px",
-  border: "1px solid",
+  color: "inherit",
+  textAlign: "left" as const,
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "transparent",
   borderRadius: "10px",
+  fontFamily: "inherit",
+};
+
+const operationsAlertActionStyle = {
+  color: "#fca5a5",
+  fontSize: "8px",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
 };
 
 const operationsAlertLabelStyle = {

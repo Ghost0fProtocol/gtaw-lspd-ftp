@@ -219,6 +219,11 @@ export default function DORForm({
     useState(false);
 
   const [
+    cancellingDraft,
+    setCancellingDraft,
+  ] = useState(false);
+
+  const [
     draftId,
     setDraftId,
   ] = useState<string | null>(
@@ -416,7 +421,8 @@ export default function DORForm({
       !ftoId ||
       !formData.patrolNumber ||
       loadingDraft ||
-      saving
+      saving ||
+      cancellingDraft
     ) {
       return;
     }
@@ -453,6 +459,7 @@ export default function DORForm({
     selectedNotebookItemIds,
     loadingDraft,
     saving,
+    cancellingDraft,
   ]);
 
   function updateField(
@@ -1968,6 +1975,132 @@ export default function DORForm({
     }
   }
 
+  async function cancelDraft() {
+    const currentDraftId =
+      draftIdRef.current ??
+      draftId;
+
+    if (!currentDraftId) {
+      clearForm();
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Cancel Patrol ${formData.patrolNumber || ""} DOR?\n\nThis will permanently delete the draft and remove it from Outstanding DORs.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    if (autosaveTimeout.current) {
+      clearTimeout(
+        autosaveTimeout.current
+      );
+
+      autosaveTimeout.current =
+        null;
+    }
+
+    setCancellingDraft(true);
+    setFormError("");
+    setSuccessMessage("");
+
+    try {
+      const auditUser = {
+        id:
+          ftoId,
+        name:
+          formData.fieldTrainingOfficer ||
+          null,
+        role:
+          null,
+      };
+
+      await auditAction({
+        user:
+          auditUser,
+
+        action:
+          "CANCEL_DOR_DRAFT",
+
+        category:
+          "DORs",
+
+        entityType:
+          "dor",
+
+        entityId:
+          currentDraftId,
+
+        targetName:
+          `${formData.probationaryOfficer || "Unknown trainee"} · Patrol ${formData.patrolNumber || "Unknown"}`,
+
+        oldData: {
+          dor_id:
+            currentDraftId,
+          status:
+            "draft",
+          trainee_id:
+            selectedTrainee,
+          patrol_number:
+            formData.patrolNumber,
+          last_saved_at:
+            lastSavedAt,
+        },
+
+        newData: {
+          deleted:
+            true,
+          status:
+            "cancelled",
+        },
+
+        execute:
+          async () => {
+            const result =
+              await supabase
+                .from("dors")
+                .delete()
+                .eq(
+                  "id",
+                  currentDraftId
+                )
+                .eq(
+                  "status",
+                  "draft"
+                );
+
+            if (result.error) {
+              throw result.error;
+            }
+
+            return result;
+          },
+      });
+
+      clearForm();
+
+      setSuccessMessage(
+        "The DOR draft was cancelled and removed from Outstanding DORs."
+      );
+    } catch (error) {
+      console.error(
+        "CANCEL DOR DRAFT ERROR",
+        error
+      );
+
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "The DOR draft could not be cancelled."
+      );
+    } finally {
+      setCancellingDraft(false);
+    }
+  }
+
   function clearForm() {
     if (selectedTrainee) {
       sessionStorage.removeItem(
@@ -2820,10 +2953,43 @@ export default function DORForm({
         )}
 
         <div style={buttonRowStyle}>
+          {draftId && (
+            <button
+              type="button"
+              onClick={() =>
+                void cancelDraft()
+              }
+              disabled={
+                saving ||
+                cancellingDraft
+              }
+              style={{
+                ...cancelDraftButtonStyle,
+                opacity:
+                  saving ||
+                  cancellingDraft
+                    ? 0.65
+                    : 1,
+                cursor:
+                  saving ||
+                  cancellingDraft
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              {cancellingDraft
+                ? "Cancelling..."
+                : "Cancel DOR"}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={clearForm}
-            disabled={saving}
+            disabled={
+              saving ||
+              cancellingDraft
+            }
             style={{
               ...secondaryButtonStyle,
               opacity:
@@ -3338,6 +3504,19 @@ const overdueDraftStyle = {
   border: "1px solid #991b1b",
   borderRadius: "8px",
   fontSize: "12px",
+  fontWeight: 700,
+};
+
+const cancelDraftButtonStyle = {
+  padding: "14px 20px",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  color: "#fecaca",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "#991b1b",
+  borderRadius: "8px",
+  fontSize: "16px",
   fontWeight: 700,
 };
 
