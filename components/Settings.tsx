@@ -7,7 +7,6 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
-import { auditAction } from "../lib/auditAction";
 
 import {
   formatMinutes,
@@ -146,26 +145,6 @@ export default function Settings({
   const [availableForP1s, setAvailableForP1s] = useState(false);
   const [maxP1s, setMaxP1s] = useState(4);
 
-  const [
-    initialAvailabilityWindows,
-    setInitialAvailabilityWindows,
-  ] = useState<
-    Array<{
-      start_time: string;
-      end_time: string;
-    }>
-  >([]);
-
-  const [
-    initialAvailableForP1s,
-    setInitialAvailableForP1s,
-  ] = useState(false);
-
-  const [
-    initialMaxP1s,
-    setInitialMaxP1s,
-  ] = useState(4);
-
   const [ftpToolTab, setFtpToolTab] =
     useState<"availability" | "import">("availability");
 
@@ -194,97 +173,29 @@ export default function Settings({
 
   useEffect(() => {
     async function loadFTPSettings() {
-      const {
-        data: availability,
-        error: availabilityError,
-      } = await supabase
+      const { data: availability } = await supabase
         .from("ftp_availability_windows")
         .select("*")
         .eq("profile_id", user.id);
 
-      if (availabilityError) {
-        console.error(
-          "LOAD AVAILABILITY ERROR",
-          availabilityError
+      if (availability?.length) {
+        setAvailabilityWindows(
+          availability.map((item) => ({
+            start_time: item.start_time.slice(0, 5),
+            end_time: item.end_time.slice(0, 5),
+          }))
         );
       }
 
-      const loadedWindows =
-        availability?.length
-          ? availability.map((item) => ({
-              start_time:
-                item.start_time.slice(0, 5),
-              end_time:
-                item.end_time.slice(0, 5),
-            }))
-          : [
-              {
-                start_time: "",
-                end_time: "",
-              },
-            ];
-
-      setAvailabilityWindows(
-        loadedWindows
-      );
-
-      setInitialAvailabilityWindows(
-        loadedWindows.filter(
-          (window) =>
-            window.start_time &&
-            window.end_time
-        )
-      );
-
-      const {
-        data: supervision,
-        error: supervisionError,
-      } = await supabase
+      const { data: supervision } = await supabase
         .from("ftp_supervision_preferences")
         .select("*")
         .eq("profile_id", user.id)
         .maybeSingle();
 
-      if (supervisionError) {
-        console.error(
-          "LOAD SUPERVISION SETTINGS ERROR",
-          supervisionError
-        );
-      }
-
       if (supervision) {
-        const loadedAvailable =
-          Boolean(
-            supervision.available_for_p1s
-          );
-
-        const loadedMaximum =
-          supervision.max_active_p1s ??
-          4;
-
-        setAvailableForP1s(
-          loadedAvailable
-        );
-
-        setMaxP1s(
-          loadedMaximum
-        );
-
-        setInitialAvailableForP1s(
-          loadedAvailable
-        );
-
-        setInitialMaxP1s(
-          loadedMaximum
-        );
-      } else {
-        setInitialAvailableForP1s(
-          false
-        );
-
-        setInitialMaxP1s(
-          4
-        );
+        setAvailableForP1s(supervision.available_for_p1s);
+        setMaxP1s(supervision.max_active_p1s ?? 4);
       }
     }
 
@@ -316,310 +227,97 @@ export default function Settings({
     setMessage("");
     setSavingProfile(true);
 
-    const validWindows =
-      availabilityWindows.filter(
-        (window) =>
-          window.start_time &&
-          window.end_time
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("profiles")
+        .update({
+          name:
+            name.trim(),
+          badge_number:
+            badge.trim(),
+          work_number:
+            workNumber.trim(),
+          rank:
+            isProbationaryOfficer
+              ? "Police Officer I"
+              : rank,
+          division:
+            isProbationaryOfficer
+              ? "Mission Row Division"
+              : division,
+        })
+        .eq(
+          "id",
+          user.id
+        )
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const validWindows = availabilityWindows.filter(
+        (window) => window.start_time && window.end_time
       );
 
-    const nextRank =
-      isProbationaryOfficer
-        ? "Police Officer I"
-        : rank;
+      const { error: deleteError } = await supabase
+        .from("ftp_availability_windows")
+        .delete()
+        .eq("profile_id", user.id);
 
-    const nextDivision =
-      isProbationaryOfficer
-        ? "Mission Row Division"
-        : division;
+      if (deleteError) {
+        throw deleteError;
+      }
 
-    const cappedMaxP1s =
-      Math.min(
-        Math.max(maxP1s, 1),
-        4
-      );
+      if (validWindows.length) {
+        const { data: savedWindows, error: insertError } = await supabase
+          .from("ftp_availability_windows")
+          .insert(
+            validWindows.map((window) => ({
+              profile_id: user.id,
+              start_time: window.start_time,
+              end_time: window.end_time,
+            }))
+          )
+          .select();
 
-    const supervisionEnabled =
-      [
+        if (insertError) {
+          throw insertError;
+        }
+
+        setAvailabilityWindows(
+          (savedWindows ?? []).map((window) => ({
+            start_time: window.start_time.slice(0, 5),
+            end_time: window.end_time.slice(0, 5),
+          }))
+        );
+      } else {
+        setAvailabilityWindows([{ start_time: "", end_time: "" }]);
+      }
+
+      if ([
         "Field Training Manager",
         "Field Training Supervisor",
         "STAFF",
-      ].includes(user.role);
-
-    try {
-      const saveResult =
-        await auditAction({
-          user,
-
-          action:
-            "UPDATE_SETTINGS",
-
-          category:
-            "Settings",
-
-          entityType:
-            "profile",
-
-          entityId:
-            user.id,
-
-          targetName:
-            name.trim() ||
-            user.name ||
-            "Unknown Officer",
-
-          oldData: {
-            profile: {
-              name:
-                user.name ??
-                null,
-              badge_number:
-                user.badge_number ??
-                null,
-              work_number:
-                user.work_number ??
-                null,
-              rank:
-                user.rank ??
-                null,
-              division:
-                user.division ??
-                null,
-            },
-
-            availability_windows:
-              initialAvailabilityWindows,
-
-            supervision_preferences:
-              supervisionEnabled
-                ? {
-                    available_for_p1s:
-                      initialAvailableForP1s,
-
-                    max_active_p1s:
-                      initialMaxP1s,
-                  }
-                : null,
-          },
-
-          newData: {
-            profile: {
-              name:
-                name.trim(),
-
-              badge_number:
-                badge.trim(),
-
-              work_number:
-                workNumber.trim(),
-
-              rank:
-                nextRank,
-
-              division:
-                nextDivision,
-            },
-
-            availability_windows:
-              validWindows,
-
-            supervision_preferences:
-              supervisionEnabled
-                ? {
-                    available_for_p1s:
-                      availableForP1s,
-
-                    max_active_p1s:
-                      cappedMaxP1s,
-                  }
-                : null,
-          },
-
-          execute: async () => {
-            const {
-              data:
-                updatedProfile,
-              error:
-                profileError,
-            } = await supabase
-              .from("profiles")
-              .update({
-                name:
-                  name.trim(),
-
-                badge_number:
-                  badge.trim(),
-
-                work_number:
-                  workNumber.trim(),
-
-                rank:
-                  nextRank,
-
-                division:
-                  nextDivision,
-              })
-              .eq(
-                "id",
-                user.id
-              )
-              .select()
-              .single();
-
-            if (profileError) {
-              throw profileError;
-            }
-
-            const {
-              error:
-                deleteError,
-            } = await supabase
-              .from(
-                "ftp_availability_windows"
-              )
-              .delete()
-              .eq(
-                "profile_id",
-                user.id
-              );
-
-            if (deleteError) {
-              throw deleteError;
-            }
-
-            let savedWindows:
-              Array<{
-                start_time: string;
-                end_time: string;
-              }> = [];
-
-            if (
-              validWindows.length
-            ) {
-              const {
-                data:
-                  insertedWindows,
-                error:
-                  insertError,
-              } = await supabase
-                .from(
-                  "ftp_availability_windows"
-                )
-                .insert(
-                  validWindows.map(
-                    (window) => ({
-                      profile_id:
-                        user.id,
-
-                      start_time:
-                        window.start_time,
-
-                      end_time:
-                        window.end_time,
-                    })
-                  )
-                )
-                .select();
-
-              if (insertError) {
-                throw insertError;
-              }
-
-              savedWindows =
-                (
-                  insertedWindows ??
-                  []
-                ).map(
-                  (window) => ({
-                    start_time:
-                      window.start_time.slice(
-                        0,
-                        5
-                      ),
-
-                    end_time:
-                      window.end_time.slice(
-                        0,
-                        5
-                      ),
-                  })
-                );
-            }
-
-            if (
-              supervisionEnabled
-            ) {
-              const {
-                error:
-                  supervisionError,
-              } = await supabase
-                .from(
-                  "ftp_supervision_preferences"
-                )
-                .upsert({
-                  profile_id:
-                    user.id,
-
-                  available_for_p1s:
-                    availableForP1s,
-
-                  max_active_p1s:
-                    cappedMaxP1s,
-                });
-
-              if (
-                supervisionError
-              ) {
-                throw supervisionError;
-              }
-            }
-
-            return {
-              data:
-                updatedProfile,
-
-              savedWindows,
-            };
-          },
-        });
-
-      const nextWindows =
-        saveResult.savedWindows.length
-          ? saveResult.savedWindows
-          : [
-              {
-                start_time: "",
-                end_time: "",
-              },
-            ];
-
-      setAvailabilityWindows(
-        nextWindows
-      );
-
-      setInitialAvailabilityWindows(
-        saveResult.savedWindows
-      );
-
-      setInitialAvailableForP1s(
-        availableForP1s
-      );
-
-      setInitialMaxP1s(
-        cappedMaxP1s
-      );
-
-      setMaxP1s(
-        cappedMaxP1s
-      );
+      ].includes(user.role)) {
+        await supabase
+          .from("ftp_supervision_preferences")
+          .upsert({
+            profile_id: user.id,
+            available_for_p1s: availableForP1s,
+            max_active_p1s: Math.min(maxP1s, 4),
+          });
+      }
 
       setMessage(
         "✅ Profile updated successfully."
       );
 
-      onUpdate(
-        saveResult.data
-      );
+      onUpdate(data);
     } catch (error) {
       console.error(
         "PROFILE UPDATE ERROR",
@@ -640,73 +338,24 @@ export default function Settings({
     setMessage("");
 
     try {
-      await auditAction({
-        user,
-
-        action:
-          "SUBMIT_FTO_REQUEST",
-
-        category:
-          "Permissions",
-
-        entityType:
-          "profile",
-
-        entityId:
-          user.id,
-
-        targetName:
-          user.name ??
-          "Unknown Officer",
-
-        oldData: {
-          requested_role:
-            user.requested_role ??
-            null,
-
-          role_request_status:
-            user.role_request_status ??
-            null,
-        },
-
-        newData: {
+      const {
+        error,
+      } = await supabase
+        .from("profiles")
+        .update({
           requested_role:
             "Field Training Officer",
-
           role_request_status:
             "pending",
-        },
+        })
+        .eq(
+          "id",
+          user.id
+        );
 
-        execute: async () => {
-          const {
-            error,
-          } = await supabase
-            .from("profiles")
-            .update({
-              requested_role:
-                "Field Training Officer",
-
-              role_request_status:
-                "pending",
-            })
-            .eq(
-              "id",
-              user.id
-            );
-
-          if (error) {
-            throw error;
-          }
-
-          return {
-            requested_role:
-              "Field Training Officer",
-
-            role_request_status:
-              "pending",
-          };
-        },
-      });
+      if (error) {
+        throw error;
+      }
 
       setMessage(
         "✅ Field Training Officer request submitted."
@@ -809,275 +458,132 @@ export default function Settings({
     setImportMessage("");
 
     try {
+      const now =
+        new Date().toISOString();
+
       const {
-        data:
-          existingFTOFile,
+        data: ftoFile,
         error:
-          existingFileError,
+          ftoFileError,
       } = await supabase
         .from("fto_files")
-        .select(`
-          id,
-          division,
-          induction_date,
-          final_evaluation_date,
-          probationary_passed_date,
-          total_instruction_minutes
-        `)
-        .eq(
-          "profile_id",
-          user.id
+        .upsert(
+          {
+            profile_id:
+              user.id,
+            division:
+              parsedPreview.division ||
+              null,
+            induction_date:
+              parsedPreview.inductionDate,
+            final_evaluation_date:
+              parsedPreview.finalEvaluationDate,
+            probationary_passed_date:
+              parsedPreview.probationaryPassedDate,
+            total_instruction_minutes:
+              parsedPreview.resolvedTotalInstructionMinutes,
+            original_bbcode:
+              importBBCode.trim(),
+            updated_at:
+              now,
+          },
+          {
+            onConflict:
+              "profile_id",
+          }
         )
-        .maybeSingle();
+        .select("id")
+        .single();
 
-      if (
-        existingFileError
-      ) {
-        throw existingFileError;
+      if (ftoFileError) {
+        throw ftoFileError;
       }
 
-      const action =
-        existingFTOFile
-          ? "REPLACE_FTO_FILE"
-          : "IMPORT_FTO_FILE";
+      const {
+        error:
+          deleteError,
+      } = await supabase
+        .from(
+          "fto_log_entries"
+        )
+        .delete()
+        .eq(
+          "fto_file_id",
+          ftoFile.id
+        );
+
+      if (deleteError) {
+        throw deleteError;
+      }
 
       const rows =
         parsedPreview.entries.map(
           (entry) => ({
+            fto_file_id:
+              ftoFile.id,
             entry_date:
               entry.date,
-
             duration_minutes:
               entry.durationMinutes,
-
             subject_name:
               entry.subjectName,
-
             entry_type:
               entry.entryType,
-
             source_url:
               entry.sourceUrl,
-
             source_month:
               entry.sourceMonth,
           })
         );
 
-      const {
-        updatedProfile,
-      } = await auditAction({
-        user,
+      if (
+        rows.length > 0
+      ) {
+        const {
+          error:
+            insertError,
+        } = await supabase
+          .from(
+            "fto_log_entries"
+          )
+          .insert(rows);
 
-        action,
-
-        category:
-          "Imports",
-
-        entityType:
-          "fto_file",
-
-        entityId:
-          existingFTOFile?.id ??
-          undefined,
-
-        targetName:
-          user.name ??
-          parsedPreview.officerName ??
-          "Unknown Officer",
-
-        oldData: {
-          existing_file:
-            existingFTOFile ??
-            null,
-
-          profile_division:
-            user.division ??
-            null,
-        },
-
-        newData: {
-          import_mode:
-            existingFTOFile
-              ? "replace"
-              : "create",
-
-          parsed_officer_name:
-            parsedPreview.officerName,
-
-          parsed_serial_number:
-            parsedPreview.serialNumber,
-
-          division:
-            parsedPreview.division ||
-            null,
-
-          induction_date:
-            parsedPreview.inductionDate,
-
-          final_evaluation_date:
-            parsedPreview.finalEvaluationDate,
-
-          probationary_passed_date:
-            parsedPreview.probationaryPassedDate,
-
-          total_instruction_minutes:
-            parsedPreview.resolvedTotalInstructionMinutes,
-
-          entry_count:
-            rows.length,
-
-          monthly_section_count:
-            parsedPreview.monthlyLogs.length,
-
-          parser_repairs:
-            parsedPreview.repairs,
-
-          parser_warnings:
-            parsedPreview.warnings,
-        },
-
-        execute: async () => {
-          const now =
-            new Date().toISOString();
-
-          const {
-            data:
-              ftoFile,
-            error:
-              ftoFileError,
-          } = await supabase
-            .from("fto_files")
-            .upsert(
-              {
-                profile_id:
-                  user.id,
-
-                division:
-                  parsedPreview.division ||
-                  null,
-
-                induction_date:
-                  parsedPreview.inductionDate,
-
-                final_evaluation_date:
-                  parsedPreview.finalEvaluationDate,
-
-                probationary_passed_date:
-                  parsedPreview.probationaryPassedDate,
-
-                total_instruction_minutes:
-                  parsedPreview.resolvedTotalInstructionMinutes,
-
-                original_bbcode:
-                  importBBCode.trim(),
-
-                updated_at:
-                  now,
-              },
-              {
-                onConflict:
-                  "profile_id",
-              }
-            )
-            .select("id")
-            .single();
-
-          if (ftoFileError) {
-            throw ftoFileError;
-          }
-
-          const {
-            error:
-              deleteError,
-          } = await supabase
-            .from(
-              "fto_log_entries"
-            )
-            .delete()
-            .eq(
-              "fto_file_id",
-              ftoFile.id
-            );
-
-          if (deleteError) {
-            throw deleteError;
-          }
-
-          if (
-            rows.length > 0
-          ) {
-            const {
-              error:
-                insertError,
-            } = await supabase
-              .from(
-                "fto_log_entries"
-              )
-              .insert(
-                rows.map(
-                  (row) => ({
-                    ...row,
-
-                    fto_file_id:
-                      ftoFile.id,
-                  })
-                )
-              );
-
-            if (insertError) {
-              throw insertError;
-            }
-          }
-
-          let updatedProfile:
-            any = null;
-
-          if (
-            divisions.includes(
-              parsedPreview.division
-            )
-          ) {
-            const {
-              data:
-                profileData,
-              error:
-                profileDivisionError,
-            } = await supabase
-              .from("profiles")
-              .update({
-                division:
-                  parsedPreview.division,
-              })
-              .eq(
-                "id",
-                user.id
-              )
-              .select()
-              .single();
-
-            if (
-              profileDivisionError
-            ) {
-              throw profileDivisionError;
-            }
-
-            updatedProfile =
-              profileData;
-          }
-
-          return {
-            ftoFile,
-            updatedProfile,
-          };
-        },
-      });
+        if (insertError) {
+          throw insertError;
+        }
+      }
 
       if (
-        updatedProfile
+        divisions.includes(
+          parsedPreview.division
+        )
       ) {
+        const {
+          data:
+            updatedProfile,
+          error:
+            profileDivisionError,
+        } = await supabase
+          .from("profiles")
+          .update({
+            division:
+              parsedPreview.division,
+          })
+          .eq(
+            "id",
+            user.id
+          )
+          .select()
+          .single();
+
+        if (
+          profileDivisionError
+        ) {
+          throw profileDivisionError;
+        }
+
         setDivision(
-          updatedProfile.division
+          parsedPreview.division
         );
 
         onUpdate(
@@ -1112,68 +618,16 @@ export default function Settings({
   }
 
   return (
-    <div style={settingsPageStyle}>
-      <section style={settingsHeroStyle}>
-        <div>
-          <p style={settingsEyebrowStyle}>
-            ACCOUNT & FTP TOOLS
-          </p>
+    <div style={pageStyle}>
+      <section style={cardStyle}>
+        <h2>
+          Account Settings
+        </h2>
 
-          <h2 style={settingsHeroTitleStyle}>
-            Settings
-          </h2>
-
-          <p style={settingsHeroTextStyle}>
-            Manage your profile, availability and FTP tools from one place.
-          </p>
-        </div>
-
-        <div style={settingsIdentityStyle}>
-          <span style={settingsIdentityLabelStyle}>
-            CURRENT ACCESS
-          </span>
-
-          <strong style={settingsIdentityValueStyle}>
-            {user.role || "Probationary Officer"}
-          </strong>
-        </div>
-      </section>
-
-      {message && (
-        <div
-          style={
-            message.startsWith("✅")
-              ? settingsSuccessStyle
-              : settingsErrorStyle
-          }
-        >
-          {message}
-        </div>
-      )}
-
-      <section style={settingsPanelStyle}>
-        <div style={settingsSectionHeaderStyle}>
-          <div>
-            <p style={settingsSectionEyebrowStyle}>
-              PROFILE
-            </p>
-
-            <h3 style={settingsSectionTitleStyle}>
-              Account Information
-            </h3>
-
-            <p style={settingsSectionTextStyle}>
-              Keep your character and departmental details accurate.
-            </p>
-          </div>
-
-          <span style={settingsRoleBadgeStyle}>
-            {user.role || "Probationary Officer"}
-          </span>
-        </div>
-
-        <div style={settingsProfileGridStyle}>
-          <Field label="Character Name">
+        <div style={gridStyle}>
+          <Field
+            label="Character Name"
+          >
             <input
               value={name}
               onChange={(event) =>
@@ -1181,11 +635,13 @@ export default function Settings({
                   event.target.value
                 )
               }
-              style={settingsInputStyle}
+              style={input}
             />
           </Field>
 
-          <Field label="Badge Number">
+          <Field
+            label="Badge Number"
+          >
             <input
               value={badge}
               onChange={(event) =>
@@ -1193,30 +649,20 @@ export default function Settings({
                   event.target.value
                 )
               }
-              style={settingsInputStyle}
-            />
-          </Field>
-
-          <Field label="Work Number">
-            <input
-              value={workNumber}
-              onChange={(event) =>
-                setWorkNumber(
-                  event.target.value
-                )
-              }
-              style={settingsInputStyle}
+              style={input}
             />
           </Field>
 
           {isProbationaryOfficer ? (
             <LockedProfileField
-              label="LSPD Rank"
+              label="Police Rank"
               value="Police Officer I"
-              helpText="Your rank becomes editable once you become a Field Training Officer."
+              helpText="Your rank will become editable once you become a Field Training Officer."
             />
           ) : (
-            <Field label="LSPD Rank">
+            <Field
+              label="LSPD Rank"
+            >
               <select
                 value={rank}
                 onChange={(event) =>
@@ -1224,7 +670,7 @@ export default function Settings({
                     event.target.value
                   )
                 }
-                style={settingsInputStyle}
+                style={input}
               >
                 {ranks.map(
                   (item) => (
@@ -1244,10 +690,12 @@ export default function Settings({
             <LockedProfileField
               label="Division"
               value="Mission Row Division"
-              helpText="Probationary Officers begin in Mission Row Division."
+              helpText="New Probationary Officers begin in Mission Row Division."
             />
           ) : (
-            <Field label="Division">
+            <Field
+              label="Division"
+            >
               <select
                 value={division}
                 onChange={(event) =>
@@ -1255,7 +703,7 @@ export default function Settings({
                     event.target.value
                   )
                 }
-                style={settingsInputStyle}
+                style={input}
               >
                 {divisions.map(
                   (item) => (
@@ -1271,226 +719,107 @@ export default function Settings({
             </Field>
           )}
 
-          <div style={settingsLockedRoleStyle}>
-            <span style={settingsLockedLabelStyle}>
-              FTP Role
-            </span>
-
-            <strong style={settingsLockedValueStyle}>
-              {user.role || "Probationary Officer"}
-            </strong>
-
-            <span style={settingsLockedHelpStyle}>
-              Access roles are managed through Personnel Management.
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section style={settingsPanelStyle}>
-        <div style={settingsSectionHeaderStyle}>
-          <div>
-            <p style={settingsSectionEyebrowStyle}>
-              FTP TOOLS
-            </p>
-
-            <h3 style={settingsSectionTitleStyle}>
-              Training Utilities
-            </h3>
-
-            <p style={settingsSectionTextStyle}>
-              Open the tools linked to your FTP responsibilities.
-            </p>
-          </div>
-        </div>
-
-        <div style={settingsToolsGridStyle}>
-          <button
-            type="button"
-            onClick={() =>
-              setFtpToolTab(
-                "availability"
-              )
-            }
-            style={{
-              ...settingsToolCardStyle,
-              ...(ftpToolTab ===
-              "availability"
-                ? settingsToolCardActiveStyle
-                : {}),
-            }}
+          <Field
+            label="Work Number"
           >
-            <span style={settingsToolIconStyle}>
-              ◷
-            </span>
-
-            <span style={settingsToolTextStyle}>
-              <strong>
-                Server Availability
-              </strong>
-
-              <span>
-                Set your normal GTA:W patrol hours and P1 capacity.
-              </span>
-            </span>
-
-            <span style={settingsToolArrowStyle}>
-              →
-            </span>
-          </button>
-
-          {canImportFTOFile && (
-            <button
-              type="button"
-              onClick={() =>
-                setFtpToolTab(
-                  "import"
+            <input
+              value={
+                workNumber
+              }
+              onChange={(event) =>
+                setWorkNumber(
+                  event.target.value
                 )
               }
+              style={input}
+            />
+          </Field>
+
+          <Field
+            label="FTP Role"
+          >
+            <input
+              value={
+                user.role ||
+                "Probationary Officer"
+              }
+              disabled
               style={{
-                ...settingsToolCardStyle,
-                ...(ftpToolTab ===
-                "import"
-                  ? settingsToolCardActiveStyle
-                  : {}),
+                ...input,
+                opacity: 0.6,
               }}
-            >
-              <span style={settingsToolIconStyle}>
-                ⇧
-              </span>
-
-              <span style={settingsToolTextStyle}>
-                <strong>
-                  FTO BBCode Importer
-                </strong>
-
-                <span>
-                  Import or replace your historical forum FTO file.
-                </span>
-              </span>
-
-              <span style={settingsToolArrowStyle}>
-                →
-              </span>
-            </button>
-          )}
+            />
+          </Field>
         </div>
-      </section>
 
-      {ftpToolTab ===
-        "availability" && (
-        <section style={settingsPanelStyle}>
-          <div style={settingsSectionHeaderStyle}>
-            <div>
-              <p style={settingsSectionEyebrowStyle}>
-                AVAILABILITY
-              </p>
+        <section style={{ marginTop: "30px" }}>
+          <h2>FTP Tools</h2>
 
-              <h3 style={settingsSectionTitleStyle}>
-                Server Availability
-              </h3>
+          <div style={tabContainerStyle}>
+            <button
+              type="button"
+              onClick={() => setFtpToolTab("availability")}
+              style={ftpToolTab === "availability" ? activeTabStyle : tabStyle}
+            >
+              Server Availability
+            </button>
 
-              <p style={settingsSectionTextStyle}>
-                Set the times you are normally available using GTA:W server time.
-              </p>
-            </div>
-
-            <span style={settingsCountBadgeStyle}>
-              {availabilityWindows.filter(
-                (window) =>
-                  window.start_time &&
-                  window.end_time
-              ).length}{" "}
-              window
-              {availabilityWindows.filter(
-                (window) =>
-                  window.start_time &&
-                  window.end_time
-              ).length === 1
-                ? ""
-                : "s"}
-            </span>
+            <button
+              type="button"
+              onClick={() => setFtpToolTab("import")}
+              style={ftpToolTab === "import" ? activeTabStyle : tabStyle}
+            >
+              FTO BBCode Importer
+            </button>
           </div>
 
-          <div style={settingsAvailabilityListStyle}>
-            {availabilityWindows.map(
-              (
-                window,
-                index
-              ) => (
-                <div
-                  key={index}
-                  style={settingsAvailabilityRowStyle}
+          {ftpToolTab === "availability" && (
+          <>
+          <h2>Server Availability</h2>
+
+          <p style={mutedStyle}>
+            Tell FTP when you are normally available on GTA:W server time.
+            Multiple availability windows are supported.
+          </p>
+
+          {availabilityWindows.map((window, index) => (
+            <div key={index} style={availabilityBoxStyle}>
+              <label style={labelStyle}>Available From</label>
+              <input
+                type="time"
+                value={window.start_time}
+                onChange={(event) =>
+                  updateAvailabilityWindow(index, "start_time", event.target.value)
+                }
+                style={input}
+              />
+
+              <label style={labelStyle}>Available Until</label>
+              <input
+                type="time"
+                value={window.end_time}
+                onChange={(event) =>
+                  updateAvailabilityWindow(index, "end_time", event.target.value)
+                }
+                style={input}
+              />
+
+              {availabilityWindows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeAvailabilityWindow(index)}
+                  style={requestButton}
                 >
-                  <div style={settingsWindowNumberStyle}>
-                    {index + 1}
-                  </div>
-
-                  <div style={settingsTimeGridStyle}>
-                    <Field label="Available From">
-                      <input
-                        type="time"
-                        value={
-                          window.start_time
-                        }
-                        onChange={(event) =>
-                          updateAvailabilityWindow(
-                            index,
-                            "start_time",
-                            event.target.value
-                          )
-                        }
-                        style={settingsInputStyle}
-                      />
-                    </Field>
-
-                    <div style={settingsTimeArrowStyle}>
-                      →
-                    </div>
-
-                    <Field label="Available Until">
-                      <input
-                        type="time"
-                        value={
-                          window.end_time
-                        }
-                        onChange={(event) =>
-                          updateAvailabilityWindow(
-                            index,
-                            "end_time",
-                            event.target.value
-                          )
-                        }
-                        style={settingsInputStyle}
-                      />
-                    </Field>
-                  </div>
-
-                  {availabilityWindows.length >
-                    1 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        removeAvailabilityWindow(
-                          index
-                        )
-                      }
-                      style={settingsRemoveButtonStyle}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              )
-            )}
-          </div>
+                  Remove Window
+                </button>
+              )}
+            </div>
+          ))}
 
           <button
             type="button"
-            onClick={
-              addAvailabilityWindow
-            }
-            style={settingsAddButtonStyle}
+            onClick={addAvailabilityWindow}
+            style={requestButton}
           >
             + Add Availability Window
           </button>
@@ -1499,200 +828,46 @@ export default function Settings({
             "Field Training Manager",
             "Field Training Supervisor",
             "STAFF",
-          ].includes(
-            user.role
-          ) && (
-            <div style={settingsSupervisionCardStyle}>
-              <div style={settingsSupervisionHeaderStyle}>
-                <div>
-                  <p style={settingsSectionEyebrowStyle}>
-                    PROBATIONER SUPERVISION
-                  </p>
+          ].includes(user.role) && (
+            <>
+              <h2>Probationer Supervision</h2>
 
-                  <h3 style={settingsSubsectionTitleStyle}>
-                    P1 Availability
-                  </h3>
+              <p style={mutedStyle}>
+                Enable this if you are available to take probationary officers.
+              </p>
 
-                  <p style={settingsSectionTextStyle}>
-                    Control whether you can take probationary officers and how many active P1s you can supervise.
-                  </p>
-                </div>
+              <select
+                value={availableForP1s ? "yes" : "no"}
+                onChange={(event) =>
+                  setAvailableForP1s(event.target.value === "yes")
+                }
+                style={input}
+              >
+                <option value="no">Not available for P1s</option>
+                <option value="yes">Available for P1s</option>
+              </select>
 
-                <span
-                  style={{
-                    ...settingsAvailabilityStatusStyle,
-                    color:
-                      availableForP1s
-                        ? "#86efac"
-                        : "#cbd5e1",
-                    borderColor:
-                      availableForP1s
-                        ? "#166534"
-                        : "#475569",
-                    backgroundColor:
-                      availableForP1s
-                        ? "rgba(20, 83, 45, 0.3)"
-                        : "#1e293b",
-                  }}
-                >
-                  {availableForP1s
-                    ? "AVAILABLE"
-                    : "UNAVAILABLE"}
-                </span>
-              </div>
+              <input
+                type="number"
+                min={1}
+                max={4}
+                value={maxP1s}
+                onChange={(event) =>
+                  setMaxP1s(Number(event.target.value))
+                }
+                style={input}
+              />
+            </>
+          )}
+          </>
+          )}
 
-              <div style={settingsSupervisionGridStyle}>
-                <Field label="Supervision Status">
-                  <select
-                    value={
-                      availableForP1s
-                        ? "yes"
-                        : "no"
-                    }
-                    onChange={(event) =>
-                      setAvailableForP1s(
-                        event.target.value ===
-                          "yes"
-                      )
-                    }
-                    style={settingsInputStyle}
-                  >
-                    <option value="no">
-                      Not available for P1s
-                    </option>
-
-                    <option value="yes">
-                      Available for P1s
-                    </option>
-                  </select>
-                </Field>
-
-                <Field label="Maximum Active P1s">
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    value={maxP1s}
-                    onChange={(event) =>
-                      setMaxP1s(
-                        Number(
-                          event.target.value
-                        )
-                      )
-                    }
-                    disabled={
-                      !availableForP1s
-                    }
-                    style={{
-                      ...settingsInputStyle,
-                      opacity:
-                        availableForP1s
-                          ? 1
-                          : 0.55,
-                    }}
-                  />
-                </Field>
-              </div>
-            </div>
+          {ftpToolTab === "import" && canImportFTOFile && (
+            <p style={mutedStyle}>
+              Use the FTO BBCode Importer below.
+            </p>
           )}
         </section>
-      )}
-
-      {ftpToolTab ===
-        "import" &&
-        canImportFTOFile && (
-          <section style={settingsPanelStyle}>
-            <div style={settingsSectionHeaderStyle}>
-              <div>
-                <p style={settingsSectionEyebrowStyle}>
-                  FTO FILE
-                </p>
-
-                <h3 style={settingsSectionTitleStyle}>
-                  Manual FTO File Import
-                </h3>
-
-                <p style={settingsSectionTextStyle}>
-                  Import or replace your existing forum FTO file without leaving Settings.
-                </p>
-              </div>
-
-              <span style={settingsRoleBadgeStyle}>
-                FTO TOOL
-              </span>
-            </div>
-
-            <div style={settingsImportCardStyle}>
-              <div style={settingsImportIconStyle}>
-                ⇧
-              </div>
-
-              <div style={settingsImportTextStyle}>
-                <strong>
-                  Import an existing FTO file
-                </strong>
-
-                <span>
-                  Paste your full BBCode, preview the parsed data and confirm the replacement.
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setImportModalOpen(
-                    true
-                  );
-                  setImportMessage("");
-                }}
-                style={settingsPrimaryButtonStyle}
-              >
-                Open Importer
-              </button>
-            </div>
-          </section>
-        )}
-
-      {user.role ===
-        "Probationary Officer" &&
-        !user.requested_role && (
-          <section style={settingsRequestCardStyle}>
-            <div>
-              <p style={settingsSectionEyebrowStyle}>
-                ROLE REQUEST
-              </p>
-
-              <h3 style={settingsSubsectionTitleStyle}>
-                Become a Field Training Officer
-              </h3>
-
-              <p style={settingsSectionTextStyle}>
-                Submit a request to begin the FTO approval process.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={
-                requestFTO
-              }
-              style={settingsRequestButtonStyle}
-            >
-              Request FTO Status
-            </button>
-          </section>
-        )}
-
-      <section style={settingsSaveBarStyle}>
-        <div>
-          <strong>
-            Save your changes
-          </strong>
-
-          <p style={settingsSaveTextStyle}>
-            Profile, availability and supervision preferences are saved together.
-          </p>
-        </div>
 
         <button
           type="button"
@@ -1701,22 +876,169 @@ export default function Settings({
             savingProfile
           }
           style={{
-            ...settingsPrimaryButtonStyle,
-            minWidth: "160px",
+            ...button,
             opacity:
               savingProfile
-                ? 0.65
+                ? 0.7
                 : 1,
-            cursor:
-              savingProfile
-                ? "not-allowed"
-                : "pointer",
           }}
         >
           {savingProfile
             ? "Saving..."
             : "Save Changes"}
         </button>
+
+        {user.role ===
+          "Probationary Officer" &&
+          !user.requested_role && (
+            <button
+              type="button"
+              onClick={
+                requestFTO
+              }
+              style={
+                requestButton
+              }
+            >
+              Request Field
+              Training Officer
+              Status
+            </button>
+          )}
+
+        {message && (
+          <p style={messageStyle}>
+            {message}
+          </p>
+        )}
+      </section>
+
+      {ftpToolTab === "import" && canImportFTOFile && (
+        <section style={cardStyle}>
+          <div style={sectionHeaderStyle}>
+            <div>
+              <h2
+                style={{
+                  margin:
+                    "0 0 6px",
+                }}
+              >
+                Manual FTO File Import
+              </h2>
+
+              <p style={mutedStyle}>
+                Import or replace your existing
+                forum FTO file without leaving
+                Settings.
+              </p>
+            </div>
+
+            <span style={badgeStyle}>
+              FTO TOOLS
+            </span>
+          </div>
+
+          <div style={importSummaryStyle}>
+            <div>
+              <strong>
+                Import an existing FTO file
+              </strong>
+
+              <p style={importSummaryTextStyle}>
+                Paste your full BBCode, preview
+                the parsed data and confirm the
+                replacement of your imported
+                history.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setImportModalOpen(true);
+                setImportMessage("");
+              }}
+              style={openImportButtonStyle}
+            >
+              Import FTO File
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section style={aboutCardStyle}>
+        <div style={aboutHeaderStyle}>
+          <div style={aboutLogoStyle}>
+            <img
+              src="/ftp-logo.png"
+              alt="LSPD Field Training Program"
+              style={aboutLogoImageStyle}
+            />
+          </div>
+
+          <div>
+            <p style={aboutEyebrowStyle}>
+              ABOUT THIS SOFTWARE
+            </p>
+
+            <h2 style={aboutTitleStyle}>
+              LSPD FTP
+            </h2>
+
+            <p style={aboutDescriptionStyle}>
+              The internal Field Training Program portal for probationary records,
+              training workflows and FTP administration.
+            </p>
+          </div>
+
+          <span style={releaseBadgeStyle}>
+            STABLE RELEASE
+          </span>
+        </div>
+
+        <div style={aboutDetailsGridStyle}>
+          <AboutDetail
+            label="Version"
+            value="1.0.0"
+          />
+
+          <AboutDetail
+            label="Designed & Developed"
+            value="GhostOfProtocol"
+          />
+
+          <AboutDetail
+            label="Platform"
+            value="LSPD Field Training Program"
+          />
+
+          <AboutDetail
+            label="Public Comment Cards"
+            value="gtaw-lspd-ftp.onrender.com/comment-cards"
+          />
+        </div>
+
+        <div style={aboutFooterStyle}>
+          <div>
+            <strong style={aboutFooterTitleStyle}>
+              Employee Comment Sheets
+            </strong>
+
+            <p style={aboutFooterTextStyle}>
+              Officers without an FTP account can submit a Comment Card using
+              the public portal.
+            </p>
+          </div>
+
+          <a
+            href="https://gtaw-lspd-ftp.onrender.com/comment-cards"
+            target="_blank"
+            rel="noreferrer"
+            style={publicLinkStyle}
+          >
+            Open Public Form ↗
+          </a>
+        </div>
       </section>
 
       {importModalOpen && (
@@ -1724,9 +1046,7 @@ export default function Settings({
           style={modalOverlayStyle}
           onClick={() => {
             if (!importing) {
-              setImportModalOpen(
-                false
-              );
+              setImportModalOpen(false);
             }
           }}
         >
@@ -1748,7 +1068,9 @@ export default function Settings({
                 </h2>
 
                 <p style={mutedStyle}>
-                  Paste your complete forum BBCode below, then preview it before importing.
+                  Paste your complete forum BBCode
+                  below, then preview it before
+                  importing.
                 </p>
               </div>
 
@@ -1756,14 +1078,10 @@ export default function Settings({
                 type="button"
                 onClick={() => {
                   if (!importing) {
-                    setImportModalOpen(
-                      false
-                    );
+                    setImportModalOpen(false);
                   }
                 }}
-                disabled={
-                  importing
-                }
+                disabled={importing}
                 style={closeButtonStyle}
               >
                 ×
@@ -1771,7 +1089,10 @@ export default function Settings({
             </div>
 
             <div style={warningStyle}>
-              Importing replaces your existing imported FTO log entries. A final confirmation will appear before anything is changed.
+              Importing replaces your existing
+              imported FTO log entries. A final
+              confirmation will appear before
+              anything is changed.
             </div>
 
             <label style={labelStyle}>
@@ -1794,9 +1115,7 @@ export default function Settings({
                 );
               }}
               placeholder="[font=Arial]Paste your complete FTO file BBCode here...[/font]"
-              disabled={
-                importing
-              }
+              disabled={importing}
               style={textareaStyle}
             />
 
@@ -1806,10 +1125,10 @@ export default function Settings({
                 onClick={
                   previewImport
                 }
-                disabled={
-                  importing
+                disabled={importing}
+                style={
+                  previewButtonStyle
                 }
-                style={previewButtonStyle}
               >
                 Preview Import
               </button>
@@ -1865,14 +1184,10 @@ export default function Settings({
                 type="button"
                 onClick={() => {
                   if (!importing) {
-                    setImportModalOpen(
-                      false
-                    );
+                    setImportModalOpen(false);
                   }
                 }}
-                disabled={
-                  importing
-                }
+                disabled={importing}
                 style={cancelButtonStyle}
               >
                 Cancel
@@ -1881,6 +1196,26 @@ export default function Settings({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AboutDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={aboutDetailStyle}>
+      <span style={aboutDetailLabelStyle}>
+        {label}
+      </span>
+
+      <strong style={aboutDetailValueStyle}>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -2099,450 +1434,6 @@ function PreviewDetail({
     </div>
   );
 }
-
-const settingsPageStyle = {
-  display: "grid",
-  gap: "20px",
-  maxWidth: "1180px",
-};
-
-const settingsHeroStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "24px",
-  padding: "28px",
-  background:
-    "linear-gradient(135deg, #111c33 0%, #0f172a 58%, #172554 100%)",
-  border: "1px solid #263655",
-  borderRadius: "16px",
-  boxShadow:
-    "0 18px 48px rgba(2, 6, 23, 0.22)",
-  flexWrap: "wrap" as const,
-};
-
-const settingsEyebrowStyle = {
-  margin: "0 0 8px",
-  color: "#60a5fa",
-  fontSize: "10px",
-  fontWeight: 900,
-  letterSpacing: "0.12em",
-};
-
-const settingsHeroTitleStyle = {
-  margin: "0 0 8px",
-  fontSize: "30px",
-};
-
-const settingsHeroTextStyle = {
-  margin: 0,
-  color: "#94a3b8",
-  lineHeight: 1.55,
-};
-
-const settingsIdentityStyle = {
-  minWidth: "220px",
-  display: "grid",
-  gap: "5px",
-  padding: "15px 17px",
-  backgroundColor:
-    "rgba(15, 23, 42, 0.72)",
-  border: "1px solid #31415f",
-  borderRadius: "11px",
-};
-
-const settingsIdentityLabelStyle = {
-  color: "#64748b",
-  fontSize: "9px",
-  fontWeight: 900,
-  letterSpacing: "0.1em",
-};
-
-const settingsIdentityValueStyle = {
-  color: "#dbeafe",
-  fontSize: "13px",
-};
-
-const settingsPanelStyle = {
-  padding: "24px",
-  background:
-    "linear-gradient(145deg, #172033, #111827)",
-  border: "1px solid #29364c",
-  borderRadius: "15px",
-  boxShadow:
-    "0 14px 38px rgba(2, 6, 23, 0.16)",
-};
-
-const settingsSectionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "18px",
-  marginBottom: "22px",
-  flexWrap: "wrap" as const,
-};
-
-const settingsSectionEyebrowStyle = {
-  margin: "0 0 6px",
-  color: "#60a5fa",
-  fontSize: "9px",
-  fontWeight: 900,
-  letterSpacing: "0.11em",
-};
-
-const settingsSectionTitleStyle = {
-  margin: "0 0 6px",
-  fontSize: "20px",
-};
-
-const settingsSubsectionTitleStyle = {
-  margin: "0 0 6px",
-  fontSize: "17px",
-};
-
-const settingsSectionTextStyle = {
-  margin: 0,
-  color: "#7c8ba1",
-  fontSize: "12px",
-  lineHeight: 1.5,
-};
-
-const settingsRoleBadgeStyle = {
-  padding: "6px 10px",
-  color: "#bfdbfe",
-  backgroundColor:
-    "rgba(30, 64, 175, 0.25)",
-  border: "1px solid #2563eb",
-  borderRadius: "999px",
-  fontSize: "10px",
-  fontWeight: 900,
-};
-
-const settingsProfileGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
-  gap: "16px",
-};
-
-const settingsInputStyle = {
-  width: "100%",
-  boxSizing: "border-box" as const,
-  padding: "12px 13px",
-  marginTop: "7px",
-  color: "white",
-  backgroundColor: "#0f172a",
-  border: "1px solid #3b4a63",
-  borderRadius: "9px",
-  fontSize: "14px",
-};
-
-const settingsLockedRoleStyle = {
-  display: "grid",
-  gap: "6px",
-  padding: "13px",
-  backgroundColor: "#0f172a",
-  border: "1px solid #334155",
-  borderRadius: "9px",
-};
-
-const settingsLockedLabelStyle = {
-  color: "#94a3b8",
-  fontSize: "12px",
-  fontWeight: 700,
-};
-
-const settingsLockedValueStyle = {
-  color: "#e2e8f0",
-  fontSize: "15px",
-};
-
-const settingsLockedHelpStyle = {
-  color: "#64748b",
-  fontSize: "10px",
-  lineHeight: 1.4,
-};
-
-const settingsToolsGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: "14px",
-};
-
-const settingsToolCardStyle = {
-  width: "100%",
-  display: "grid",
-  gridTemplateColumns:
-    "42px minmax(0, 1fr) auto",
-  alignItems: "center",
-  gap: "13px",
-  padding: "17px",
-  color: "white",
-  textAlign: "left" as const,
-  backgroundColor: "#0f172a",
-  backgroundImage: "none",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "#2c3b52",
-  borderRadius: "12px",
-  cursor: "pointer",
-};
-
-const settingsToolCardActiveStyle = {
-  backgroundColor: "#0f172a",
-  backgroundImage:
-    "linear-gradient(135deg, rgba(30,64,175,.34), #0f172a)",
-  borderColor: "#2563eb",
-  boxShadow:
-    "0 0 0 1px rgba(59,130,246,.14)",
-};
-
-const settingsToolIconStyle = {
-  width: "42px",
-  height: "42px",
-  display: "grid",
-  placeItems: "center",
-  color: "#bfdbfe",
-  backgroundColor:
-    "rgba(30, 64, 175, 0.28)",
-  border: "1px solid #2563eb",
-  borderRadius: "10px",
-  fontSize: "18px",
-  fontWeight: 900,
-};
-
-const settingsToolTextStyle = {
-  minWidth: 0,
-  display: "grid",
-  gap: "5px",
-};
-
-const settingsToolArrowStyle = {
-  color: "#60a5fa",
-  fontSize: "19px",
-};
-
-const settingsCountBadgeStyle = {
-  padding: "6px 10px",
-  color: "#cbd5e1",
-  backgroundColor: "#1e293b",
-  border: "1px solid #475569",
-  borderRadius: "999px",
-  fontSize: "10px",
-  fontWeight: 800,
-};
-
-const settingsAvailabilityListStyle = {
-  display: "grid",
-  gap: "11px",
-};
-
-const settingsAvailabilityRowStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "36px minmax(0, 1fr) auto",
-  alignItems: "end",
-  gap: "14px",
-  padding: "15px",
-  backgroundColor: "#0f172a",
-  border: "1px solid #2c3b52",
-  borderRadius: "11px",
-};
-
-const settingsWindowNumberStyle = {
-  width: "34px",
-  height: "34px",
-  display: "grid",
-  placeItems: "center",
-  alignSelf: "center",
-  color: "#bfdbfe",
-  backgroundColor:
-    "rgba(30, 64, 175, 0.25)",
-  border: "1px solid #2563eb",
-  borderRadius: "9px",
-  fontSize: "11px",
-  fontWeight: 900,
-};
-
-const settingsTimeGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "minmax(0, 1fr) 28px minmax(0, 1fr)",
-  alignItems: "end",
-  gap: "10px",
-};
-
-const settingsTimeArrowStyle = {
-  display: "grid",
-  placeItems: "center",
-  height: "42px",
-  color: "#60a5fa",
-  fontSize: "18px",
-};
-
-const settingsRemoveButtonStyle = {
-  padding: "11px 13px",
-  color: "#fecaca",
-  backgroundColor:
-    "rgba(127, 29, 29, 0.28)",
-  border: "1px solid #991b1b",
-  borderRadius: "8px",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const settingsAddButtonStyle = {
-  marginTop: "13px",
-  padding: "11px 14px",
-  color: "#bbf7d0",
-  backgroundColor:
-    "rgba(20, 83, 45, 0.28)",
-  border: "1px solid #166534",
-  borderRadius: "8px",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const settingsSupervisionCardStyle = {
-  marginTop: "20px",
-  padding: "18px",
-  background:
-    "linear-gradient(135deg, rgba(37,99,235,.12), #0f172a)",
-  border: "1px solid #31517c",
-  borderRadius: "12px",
-};
-
-const settingsSupervisionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "16px",
-  marginBottom: "16px",
-  flexWrap: "wrap" as const,
-};
-
-const settingsSupervisionGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
-  gap: "14px",
-};
-
-const settingsAvailabilityStatusStyle = {
-  padding: "6px 9px",
-  border: "1px solid",
-  borderRadius: "999px",
-  fontSize: "9px",
-  fontWeight: 900,
-};
-
-const settingsImportCardStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "52px minmax(0, 1fr) auto",
-  alignItems: "center",
-  gap: "16px",
-  padding: "18px",
-  backgroundColor: "#0f172a",
-  border: "1px solid #2c3b52",
-  borderRadius: "12px",
-};
-
-const settingsImportIconStyle = {
-  width: "50px",
-  height: "50px",
-  display: "grid",
-  placeItems: "center",
-  color: "#bfdbfe",
-  backgroundColor:
-    "rgba(30, 64, 175, 0.28)",
-  border: "1px solid #2563eb",
-  borderRadius: "11px",
-  fontSize: "21px",
-  fontWeight: 900,
-};
-
-const settingsImportTextStyle = {
-  display: "grid",
-  gap: "6px",
-};
-
-const settingsPrimaryButtonStyle = {
-  padding: "12px 16px",
-  color: "white",
-  backgroundColor: "#2563eb",
-  border: "1px solid #3b82f6",
-  borderRadius: "9px",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const settingsRequestCardStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  padding: "22px",
-  background:
-    "linear-gradient(135deg, rgba(91,33,182,.18), #111827)",
-  border: "1px solid #6d28d9",
-  borderRadius: "14px",
-  flexWrap: "wrap" as const,
-};
-
-const settingsRequestButtonStyle = {
-  padding: "12px 16px",
-  color: "white",
-  backgroundColor: "#7c3aed",
-  border: "1px solid #8b5cf6",
-  borderRadius: "9px",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const settingsSaveBarStyle = {
-  position: "sticky" as const,
-  bottom: "16px",
-  zIndex: 20,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  padding: "17px 20px",
-  backgroundColor:
-    "rgba(15, 23, 42, 0.94)",
-  border: "1px solid #334155",
-  borderRadius: "13px",
-  boxShadow:
-    "0 16px 45px rgba(2, 6, 23, 0.38)",
-  backdropFilter: "blur(12px)",
-  flexWrap: "wrap" as const,
-};
-
-const settingsSaveTextStyle = {
-  margin: "5px 0 0",
-  color: "#64748b",
-  fontSize: "11px",
-};
-
-const settingsSuccessStyle = {
-  padding: "13px 15px",
-  color: "#bbf7d0",
-  backgroundColor:
-    "rgba(20, 83, 45, 0.34)",
-  border: "1px solid #166534",
-  borderRadius: "10px",
-};
-
-const settingsErrorStyle = {
-  padding: "13px 15px",
-  color: "#fecaca",
-  backgroundColor:
-    "rgba(127, 29, 29, 0.34)",
-  border: "1px solid #991b1b",
-  borderRadius: "10px",
-};
 
 const lockedFieldStyle = {
   padding: "14px",
@@ -2813,6 +1704,146 @@ const openImportButtonStyle = {
   border: "none",
   borderRadius: "8px",
   cursor: "pointer",
+  fontWeight: 800,
+  whiteSpace: "nowrap" as const,
+};
+
+const aboutCardStyle = {
+  padding: "28px",
+  color: "white",
+  background:
+    "linear-gradient(145deg, #111c33 0%, #172033 58%, #172554 100%)",
+  border:
+    "1px solid #2b3b57",
+  borderRadius: "14px",
+  boxShadow:
+    "0 18px 45px rgba(2, 6, 23, 0.22)",
+};
+
+const aboutHeaderStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "72px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "18px",
+  marginBottom: "22px",
+};
+
+const aboutLogoStyle = {
+  width: "72px",
+  height: "72px",
+  display: "grid",
+  placeItems: "center",
+};
+
+const aboutLogoImageStyle = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain" as const,
+};
+
+const aboutEyebrowStyle = {
+  margin: "0 0 6px",
+  color: "#60a5fa",
+  fontSize: "10px",
+  fontWeight: 900,
+  letterSpacing: "0.12em",
+};
+
+const aboutTitleStyle = {
+  margin: "0 0 7px",
+  fontSize: "24px",
+};
+
+const aboutDescriptionStyle = {
+  margin: 0,
+  color: "#94a3b8",
+  lineHeight: 1.55,
+};
+
+const releaseBadgeStyle = {
+  padding: "7px 10px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.32)",
+  border:
+    "1px solid #166534",
+  borderRadius: "999px",
+  fontSize: "10px",
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+  whiteSpace: "nowrap" as const,
+};
+
+const aboutDetailsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "12px",
+};
+
+const aboutDetailStyle = {
+  display: "grid",
+  gap: "6px",
+  padding: "14px",
+  backgroundColor:
+    "rgba(15, 23, 42, 0.76)",
+  border:
+    "1px solid #334155",
+  borderRadius: "9px",
+};
+
+const aboutDetailLabelStyle = {
+  color: "#64748b",
+  fontSize: "10px",
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+  textTransform:
+    "uppercase" as const,
+};
+
+const aboutDetailValueStyle = {
+  color: "#dbeafe",
+  fontSize: "13px",
+  overflowWrap:
+    "anywhere" as const,
+};
+
+const aboutFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent:
+    "space-between",
+  gap: "18px",
+  padding: "16px",
+  marginTop: "16px",
+  backgroundColor:
+    "rgba(15, 23, 42, 0.62)",
+  border:
+    "1px solid #334155",
+  borderRadius: "10px",
+  flexWrap: "wrap" as const,
+};
+
+const aboutFooterTitleStyle = {
+  color: "#e2e8f0",
+};
+
+const aboutFooterTextStyle = {
+  margin: "5px 0 0",
+  color: "#94a3b8",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
+
+const publicLinkStyle = {
+  padding: "11px 15px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border:
+    "1px solid #3b82f6",
+  borderRadius: "8px",
+  textDecoration: "none",
   fontWeight: 800,
   whiteSpace: "nowrap" as const,
 };

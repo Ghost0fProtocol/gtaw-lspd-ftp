@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  useState,
+} from "react";
+
+import {
   getRoleContextLabel,
   getRoleDisplayName,
   getSidebarMenuItems,
@@ -14,7 +18,12 @@ type Props = {
   role: string;
 };
 
-const ftoRecordsRoles = [
+type MenuSection = {
+  label: string;
+  items: string[];
+};
+
+const managementRoles = [
   "Field Training Manager",
   "Field Training Supervisor",
   "FTP Staff",
@@ -37,11 +46,73 @@ const commentCardReviewRoles = [
   "LSPD STAFF",
 ];
 
+const menuSections: MenuSection[] = [
+  {
+    label: "Overview",
+    items: [
+      "Dashboard",
+    ],
+  },
+  {
+    label: "Training Operations",
+    items: [
+      "Daily Observation Reports",
+      "P1 Records",
+      "My Notebook",
+      "My FTO File",
+      "FTO Records",
+      "Comment Card Centre",
+    ],
+  },
+  {
+    label: "FTP Management",
+    items: [
+      "Field Training Management Dashboard",
+      "FTP Management",
+      "Batch Management",
+      "Personnel Management",
+      "Role Requests",
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      "Audit Centre",
+      "Training Calendar",
+      "Settings",
+    ],
+  },
+];
+
+const menuIcons:
+  Record<string, string> = {
+    Dashboard: "⌂",
+    "Daily Observation Reports": "▣",
+    "P1 Records": "◎",
+    "My Notebook": "▤",
+    "My FTO File": "▱",
+    "FTO Records": "▥",
+    "Comment Card Centre": "▧",
+    "Field Training Management Dashboard": "⌁",
+    "FTP Management": "⌁",
+    "Batch Management": "▦",
+    "Personnel Management": "♙",
+    "Role Requests": "◇",
+    "Audit Centre": "◈",
+    "Training Calendar": "□",
+    Settings: "⚙",
+  };
+
 export default function Sidebar({
   activePage,
   onPageChange,
   role,
 }: Props) {
+  const [
+    logoFailed,
+    setLogoFailed,
+  ] = useState(false);
+
   const baseMenuItems =
     getSidebarMenuItems(
       role
@@ -52,7 +123,7 @@ export default function Sidebar({
   ];
 
   if (
-    ftoRecordsRoles.includes(
+    managementRoles.includes(
       role
     ) &&
     !menuItems.includes(
@@ -109,14 +180,60 @@ export default function Sidebar({
     );
   }
 
+  const visibleSections =
+    menuSections
+      .map(
+        (section) => ({
+          ...section,
+          items:
+            section.items.filter(
+              (item) =>
+                menuItems.includes(
+                  item
+                )
+            ),
+        })
+      )
+      .filter(
+        (section) =>
+          section.items.length >
+          0
+      );
+
+  const ungroupedItems =
+    menuItems.filter(
+      (item) =>
+        !menuSections.some(
+          (section) =>
+            section.items.includes(
+              item
+            )
+        )
+    );
+
   return (
     <aside style={sidebarStyle}>
       <div style={brandBlockStyle}>
-        <div style={brandMarkStyle}>
-          FTP
+        <div style={logoShellStyle}>
+          {!logoFailed ? (
+            <img
+              src="/ftp-logo.png"
+              alt="LSPD Field Training Program"
+              onError={() =>
+                setLogoFailed(
+                  true
+                )
+              }
+              style={logoImageStyle}
+            />
+          ) : (
+            <span style={fallbackLogoStyle}>
+              FTP
+            </span>
+          )}
         </div>
 
-        <div>
+        <div style={brandTextStyle}>
           <h2 style={headingStyle}>
             LSPD FTP
           </h2>
@@ -142,99 +259,212 @@ export default function Sidebar({
       </div>
 
       <nav style={navigationStyle}>
-        {menuItems.map(
-          (item) => {
-            const active =
-              activePage ===
-              item;
+        {visibleSections.map(
+          (section) => (
+            <div
+              key={
+                section.label
+              }
+              style={sectionStyle}
+            >
+              <p style={sectionLabelStyle}>
+                {section.label}
+              </p>
 
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() =>
-                  onPageChange(
-                    item
+              <div style={sectionItemsStyle}>
+                {section.items.map(
+                  (item) => (
+                    <MenuButton
+                      key={item}
+                      item={item}
+                      active={
+                        activePage ===
+                        item
+                      }
+                      onClick={() =>
+                        onPageChange(
+                          item
+                        )
+                      }
+                    />
                   )
-                }
-                style={{
-                  ...menuButtonStyle,
-                  ...(active
-                    ? activeMenuButtonStyle
-                    : inactiveMenuButtonStyle),
-                }}
-              >
-                <span
-                  style={{
-                    ...menuIndicatorStyle,
-                    opacity:
-                      active ? 1 : 0,
-                  }}
-                />
+                )}
+              </div>
+            </div>
+          )
+        )}
 
-                <span>
-                  {item}
-                </span>
-              </button>
-            );
-          }
+        {ungroupedItems.length >
+          0 && (
+          <div style={sectionStyle}>
+            <p style={sectionLabelStyle}>
+              Other
+            </p>
+
+            <div style={sectionItemsStyle}>
+              {ungroupedItems.map(
+                (item) => (
+                  <MenuButton
+                    key={item}
+                    item={item}
+                    active={
+                      activePage ===
+                      item
+                    }
+                    onClick={() =>
+                      onPageChange(
+                        item
+                      )
+                    }
+                  />
+                )
+              )}
+            </div>
+          </div>
         )}
       </nav>
 
       <div style={sidebarFooterStyle}>
-        Field Training Portal
+        <div style={footerContentStyle}>
+          <strong style={footerTitleStyle}>
+            LSPD FTP
+          </strong>
+
+          <span style={footerVersionStyle}>
+            Version 1.0.0
+          </span>
+
+          <span style={footerSubtitleStyle}>
+            Designed &amp; Developed
+          </span>
+
+          <span style={footerAuthorStyle}>
+            GhostOfProtocol
+          </span>
+        </div>
       </div>
     </aside>
   );
 }
 
+function MenuButton({
+  item,
+  active,
+  onClick,
+}: {
+  item: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...menuButtonStyle,
+        ...(active
+          ? activeMenuButtonStyle
+          : inactiveMenuButtonStyle),
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          ...menuIconStyle,
+          color:
+            active
+              ? "#bfdbfe"
+              : "#60a5fa",
+        }}
+      >
+        {menuIcons[item] ??
+          "•"}
+      </span>
+
+      <span style={menuTextStyle}>
+        {item}
+      </span>
+
+      {active && (
+        <span
+          aria-hidden="true"
+          style={activeIndicatorStyle}
+        />
+      )}
+    </button>
+  );
+}
+
 const sidebarStyle = {
-  width: "280px",
+  width: "300px",
   minHeight: "100vh",
+  maxHeight: "100vh",
+  position: "sticky" as const,
+  top: 0,
   boxSizing:
     "border-box" as const,
   display: "flex",
   flexDirection:
     "column" as const,
-  padding: "24px 18px",
+  padding: "22px 16px",
   color: "white",
-  backgroundColor:
-    "#0b1220",
+  background:
+    "linear-gradient(180deg, #081221 0%, #0b1424 52%, #08111f 100%)",
   borderRight:
-    "1px solid #1e293b",
+    "1px solid #1e2c43",
+  overflowY: "auto" as const,
 };
 
 const brandBlockStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "12px",
-  padding: "0 6px",
-  marginBottom: "22px",
+  gap: "13px",
+  padding: "0 5px",
+  marginBottom: "20px",
 };
 
-const brandMarkStyle = {
-  width: "44px",
-  height: "44px",
+const logoShellStyle = {
+  width: "62px",
+  height: "62px",
+  flex: "0 0 auto",
   display: "grid",
   placeItems: "center",
-  color: "#dbeafe",
+  overflow: "hidden",
   background:
-    "linear-gradient(135deg, #2563eb, #1d4ed8)",
+    "linear-gradient(145deg, #2563eb, #1d4ed8)",
   border:
     "1px solid #60a5fa",
-  borderRadius: "12px",
-  fontSize: "12px",
-  fontWeight: 900,
-  letterSpacing: "0.08em",
+  borderRadius: "15px",
   boxShadow:
-    "0 10px 30px rgba(37, 99, 235, 0.22)",
+    "0 12px 30px rgba(37, 99, 235, 0.24)",
+};
+
+const logoImageStyle = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain" as const,
+  padding: "5px",
+  boxSizing:
+    "border-box" as const,
+};
+
+const fallbackLogoStyle = {
+  color: "#dbeafe",
+  fontSize: "15px",
+  fontWeight: 900,
+  letterSpacing: "0.1em",
+};
+
+const brandTextStyle = {
+  minWidth: 0,
 };
 
 const headingStyle = {
-  margin: "0 0 4px",
-  fontSize: "19px",
+  margin: "0 0 5px",
+  fontSize: "22px",
+  fontWeight: 800,
   letterSpacing:
-    "0.02em",
+    "0.01em",
 };
 
 const roleContextStyle = {
@@ -243,91 +473,180 @@ const roleContextStyle = {
   fontSize: "11px",
   fontWeight: 900,
   letterSpacing:
-    "0.09em",
+    "0.12em",
   textTransform:
     "uppercase" as const,
 };
 
 const roleCardStyle = {
-  padding: "14px",
-  marginBottom: "18px",
+  padding: "15px",
+  marginBottom: "20px",
   backgroundColor:
-    "#111c2f",
+    "rgba(17, 28, 47, 0.92)",
   border:
-    "1px solid #24324a",
-  borderRadius: "11px",
+    "1px solid #263750",
+  borderRadius: "12px",
+  boxShadow:
+    "inset 0 1px 0 rgba(255,255,255,0.025)",
 };
 
 const roleCardLabelStyle = {
-  margin: "0 0 6px",
-  color: "#64748b",
+  margin: "0 0 7px",
+  color: "#7186a6",
   fontSize: "10px",
   fontWeight: 900,
   letterSpacing:
-    "0.09em",
+    "0.12em",
 };
 
 const roleCardValueStyle = {
-  color: "#cbd5e1",
-  fontSize: "13px",
+  color: "#dbeafe",
+  fontSize: "14px",
 };
 
 const navigationStyle = {
   display: "grid",
-  gap: "8px",
+  gap: "21px",
+};
+
+const sectionStyle = {
+  display: "grid",
+  gap: "9px",
+};
+
+const sectionLabelStyle = {
+  margin: "0 8px",
+  color: "#64748b",
+  fontSize: "9px",
+  fontWeight: 900,
+  letterSpacing:
+    "0.13em",
+  textTransform:
+    "uppercase" as const,
+};
+
+const sectionItemsStyle = {
+  display: "grid",
+  gap: "7px",
 };
 
 const menuButtonStyle = {
   position:
     "relative" as const,
   width: "100%",
-  display: "flex",
+  minHeight: "48px",
+  display: "grid",
+  gridTemplateColumns:
+    "24px minmax(0, 1fr)",
   alignItems: "center",
   gap: "10px",
-  padding: "13px 14px",
+  padding: "11px 13px",
   color: "white",
   textAlign:
     "left" as const,
-  borderRadius: "9px",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderRadius: "10px",
   cursor: "pointer",
-  fontSize: "14px",
-  fontWeight: 700,
+  fontFamily: "inherit",
   transition:
-    "background-color 140ms ease, border-color 140ms ease",
+    "background-color 140ms ease, border-color 140ms ease, transform 140ms ease",
 };
 
 const activeMenuButtonStyle = {
-  backgroundColor:
-    "#1d4ed8",
-  border:
-    "1px solid #3b82f6",
+  background:
+    "linear-gradient(135deg, #1d4ed8, #2859df)",
+  borderColor:
+    "#3b82f6",
   boxShadow:
     "0 8px 24px rgba(37, 99, 235, 0.2)",
 };
 
 const inactiveMenuButtonStyle = {
   backgroundColor:
-    "#111827",
-  border:
-    "1px solid #1f2937",
+    "rgba(15, 23, 42, 0.72)",
+  borderColor:
+    "#1f3048",
 };
 
-const menuIndicatorStyle = {
+const menuIconStyle = {
+  width: "24px",
+  display: "grid",
+  placeItems: "center",
+  fontSize: "17px",
+  fontWeight: 700,
+};
+
+const menuTextStyle = {
+  lineHeight: 1.35,
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const activeIndicatorStyle = {
+  position: "absolute" as const,
+  left: "-1px",
+  top: "12px",
+  bottom: "12px",
   width: "4px",
-  height: "18px",
   backgroundColor:
     "#bfdbfe",
-  borderRadius: "999px",
+  borderRadius: "0 999px 999px 0",
 };
 
 const sidebarFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
   marginTop: "auto",
-  padding: "18px 6px 4px",
+  padding: "22px 7px 4px",
   color: "#475569",
-  fontSize: "11px",
-  fontWeight: 700,
+  fontSize: "10px",
+  fontWeight: 800,
   letterSpacing:
     "0.06em",
   textTransform:
     "uppercase" as const,
+};
+
+const footerContentStyle = {
+  display: "grid",
+  gap: "3px",
+};
+
+const footerTitleStyle = {
+  color: "#64748b",
+  fontSize: "11px",
+  fontWeight: 800,
+};
+
+const footerVersionStyle = {
+  color: "#94a3b8",
+  fontSize: "10px",
+  fontWeight: 700,
+};
+
+const footerSubtitleStyle = {
+  color: "#475569",
+  fontSize: "9px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
+};
+
+const footerAuthorStyle = {
+  color: "#cbd5e1",
+  fontSize: "11px",
+  fontWeight: 700,
+};
+
+const footerMarkStyle = {
+  width: "28px",
+  height: "28px",
+  display: "grid",
+  placeItems: "center",
+  color: "#60a5fa",
+  border:
+    "1px solid #294165",
+  borderRadius: "7px",
+  fontSize: "8px",
 };
