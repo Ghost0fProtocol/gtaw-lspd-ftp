@@ -418,32 +418,39 @@ const sidebarStyle = {
 const brandBlockStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "13px",
+  gap: "16px",
   padding: "0 5px",
   marginBottom: "20px",
 };
 
 const logoShellStyle = {
-  width: "62px",
-  height: "62px",
+  width: "78px",
+  height: "78px",
   flex: "0 0 auto",
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-  background:
-    "linear-gradient(145deg, #2563eb, #1d4ed8)",
-  border:
-    "1px solid #60a5fa",
-  borderRadius: "15px",
-  boxShadow:
-    "0 12px 30px rgba(37, 99, 235, 0.24)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "visible",
+  backgroundColor:
+    "transparent",
+  borderWidth: "0",
+  borderStyle: "solid",
+  borderColor:
+    "transparent",
+  borderRadius: "0",
+  boxShadow: "none",
 };
 
 const logoImageStyle = {
-  width: "100%",
-  height: "100%",
+  width: "78px",
+  height: "78px",
+  display: "block",
   objectFit: "contain" as const,
-  padding: "5px",
+  padding: "0",
+  margin: "0",
+  backgroundColor:
+    "transparent",
+  borderRadius: "0",
   boxSizing:
     "border-box" as const,
 };
