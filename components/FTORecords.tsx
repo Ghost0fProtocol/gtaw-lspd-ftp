@@ -615,18 +615,20 @@ export default function FTORecords({
       | "extend"
       | "fail"
   ) {
-    const reviewedPatrols =
+    const completedPatrols =
       record.patrols.filter(
         (patrol) =>
           patrol.status ===
-          "reviewed"
+            "submitted" ||
+          patrol.status ===
+            "reviewed"
       ).length;
 
     if (
-      reviewedPatrols < 3
+      completedPatrols < 3
     ) {
       setError(
-        "All three probation patrols must be reviewed before the Final Evaluation can be completed."
+        "All three probation patrols must be submitted before the Final Evaluation can be completed."
       );
 
       return;
@@ -1219,11 +1221,13 @@ export default function FTORecords({
         ) : (
           filteredRecords.map(
             (record) => {
-              const reviewed =
+              const completed =
                 record.patrols.filter(
                   (patrol) =>
                     patrol.status ===
-                    "reviewed"
+                      "submitted" ||
+                    patrol.status ===
+                      "reviewed"
                 ).length;
 
               return (
@@ -1274,7 +1278,7 @@ export default function FTORecords({
                     <strong>
                       {record.probationStatus ===
                       "probationary"
-                        ? `${reviewed}/3 patrols reviewed`
+                        ? `${completed}/3 patrols completed`
                         : record.probationStatus ===
                             "qualified"
                           ? "Probation completed"
@@ -1292,7 +1296,7 @@ export default function FTORecords({
                               : `${Math.min(
                                   100,
                                   (
-                                    reviewed /
+                                    completed /
                                     3
                                   ) *
                                     100
