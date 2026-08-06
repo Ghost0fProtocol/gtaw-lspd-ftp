@@ -4,6 +4,8 @@ import {
   useState,
 } from "react";
 
+import AppVersion from "./AppVersion";
+
 import {
   getRoleContextLabel,
   getRoleDisplayName,
@@ -334,9 +336,9 @@ export default function Sidebar({
             LSPD FTP
           </strong>
 
-          <span style={footerVersionStyle}>
-            Version 1.0.0
-          </span>
+          <AppVersion
+            style={footerVersionStyle}
+          />
 
           <span style={footerSubtitleStyle}>
             Designed &amp; Developed
