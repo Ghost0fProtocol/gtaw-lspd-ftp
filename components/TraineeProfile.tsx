@@ -27,6 +27,7 @@ type TraineeProfileProps = {
   openDOR: (
     id: string
   ) => void;
+  readOnly?: boolean;
   onBack: () => void;
   onUpdate: (
     updatedTrainee: Trainee
@@ -92,6 +93,24 @@ type PPOWERRecord = {
   ftmName: string;
 };
 
+type OrientationReport = {
+  id: string;
+  trainee_id: string;
+  completing_officer_id: string;
+  completing_officer_name: string;
+  completing_officer_badge: string;
+  patrol_date: string;
+  start_time: string;
+  end_time: string;
+  duration: string;
+  checklist:
+    | Record<string, boolean>
+    | null;
+  incidents_tasks: string;
+  bbcode: string;
+  created_at: string;
+};
+
 type DatabaseNotebookItem = {
   id: string;
   trainee_id: string;
@@ -99,8 +118,13 @@ type DatabaseNotebookItem = {
   item_label: string;
   completed: boolean;
   completion_date?: string | null;
+  completed_at?: string | null;
+  completed_by?: string | null;
   evidence_link?: string | null;
+  completion_evidence?: string | null;
   completion_source?: string | null;
+  completion_patrol_number?: number | null;
+  completion_dor_id?: string | null;
 };
 
 
@@ -145,6 +169,7 @@ export default function TraineeProfile({
   trainee,
   user,
   openDOR,
+  readOnly = false,
   onBack,
   onUpdate,
 }: TraineeProfileProps) {
@@ -225,6 +250,35 @@ export default function TraineeProfile({
   >(null);
 
   const [
+    orientationReport,
+    setOrientationReport,
+  ] = useState<
+    OrientationReport | null
+  >(null);
+
+  const [
+    selectedOrientation,
+    setSelectedOrientation,
+  ] = useState<
+    OrientationReport | null
+  >(null);
+
+  const [
+    loadingOrientation,
+    setLoadingOrientation,
+  ] = useState(true);
+
+  const [
+    orientationError,
+    setOrientationError,
+  ] = useState("");
+
+  const [
+    orientationCopied,
+    setOrientationCopied,
+  ] = useState(false);
+
+  const [
     loadingPPOWERs,
     setLoadingPPOWERs,
   ] = useState(true);
@@ -238,6 +292,11 @@ export default function TraineeProfile({
     notebookItems,
     setNotebookItems,
   ] = useState<DatabaseNotebookItem[]>([]);
+
+  const [
+    expandedNotebookItems,
+    setExpandedNotebookItems,
+  ] = useState<Record<string, boolean>>({});
 
   const [
     loadingNotebook,
@@ -291,6 +350,7 @@ export default function TraineeProfile({
     loadDORs();
     loadPPOWERs();
     loadNotebookItems();
+    loadOrientationReport();
   }, [trainee]);
 
   async function loadNotebookItems() {
@@ -310,8 +370,13 @@ export default function TraineeProfile({
           item_label,
           completed,
           completion_date,
+          completed_at,
+          completed_by,
           evidence_link,
-          completion_source
+          completion_evidence,
+          completion_source,
+          completion_patrol_number,
+          completion_dor_id
         `)
         .eq(
           "trainee_id",
@@ -367,6 +432,10 @@ export default function TraineeProfile({
         .eq(
           "trainee_id",
           trainee.id
+        )
+        .eq(
+          "status",
+          "submitted"
         )
         .order(
           "patrol_number",
@@ -575,6 +644,95 @@ export default function TraineeProfile({
       );
     } finally {
       setLoadingPPOWERs(false);
+    }
+  }
+
+  async function loadOrientationReport() {
+    setLoadingOrientation(true);
+    setOrientationError("");
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from(
+          "orientation_reports"
+        )
+        .select(`
+          id,
+          trainee_id,
+          completing_officer_id,
+          completing_officer_name,
+          completing_officer_badge,
+          patrol_date,
+          start_time,
+          end_time,
+          duration,
+          checklist,
+          incidents_tasks,
+          bbcode,
+          created_at
+        `)
+        .eq(
+          "trainee_id",
+          trainee.id
+        )
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      setOrientationReport(
+        data
+          ? (data as OrientationReport)
+          : null
+      );
+    } catch (error) {
+      console.error(
+        "ORIENTATION REPORT LOAD ERROR",
+        error
+      );
+
+      setOrientationReport(
+        null
+      );
+
+      setOrientationError(
+        error instanceof Error
+          ? error.message
+          : "The Orientation Report could not be loaded."
+      );
+    } finally {
+      setLoadingOrientation(false);
+    }
+  }
+
+  async function copyOrientationBBCode() {
+    if (!selectedOrientation) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        selectedOrientation.bbcode
+      );
+
+      setOrientationCopied(
+        true
+      );
+
+      setTimeout(() => {
+        setOrientationCopied(
+          false
+        );
+      }, 2000);
+    } catch (error) {
+      console.error(
+        "COPY ORIENTATION BBCODE ERROR",
+        error
+      );
     }
   }
 
@@ -985,6 +1143,42 @@ export default function TraineeProfile({
     }
   }
 
+  function toggleNotebookItem(
+    itemId: string
+  ) {
+    setExpandedNotebookItems(
+      (current) => ({
+        ...current,
+        [itemId]: !current[itemId],
+      })
+    );
+  }
+
+  function getNotebookCompletionDOR(
+    item: DatabaseNotebookItem
+  ) {
+    if (item.completion_dor_id) {
+      return (
+        dors.find(
+          (dor) =>
+            dor.id === item.completion_dor_id
+        ) ?? null
+      );
+    }
+
+    if (item.completion_patrol_number) {
+      return (
+        dors.find(
+          (dor) =>
+            dor.patrol_number ===
+            item.completion_patrol_number
+        ) ?? null
+      );
+    }
+
+    return null;
+  }
+
   function openFinalEvaluationDOR() {
     sessionStorage.setItem(
       `ftp-patrol-type:${trainee.id}`,
@@ -996,7 +1190,9 @@ export default function TraineeProfile({
     );
   }
 
-  const canCompletePPOWER = [
+  const canCompletePPOWER =
+    !readOnly &&
+    [
   "Field Training Manager",
   "Field Training Supervisor",
   "FTP Staff",
@@ -1006,7 +1202,9 @@ export default function TraineeProfile({
   user?.role ?? ""
 );
 
-const canPromoteToP2 = [
+const canPromoteToP2 =
+    !readOnly &&
+    [
   "Field Training Supervisor",
   "FTP Staff",
   "STAFF",
@@ -1144,7 +1342,10 @@ const canPromoteToP2 = [
       dors
     );
 
-  if (activePPOWERWeek) {
+  if (
+    activePPOWERWeek &&
+    !readOnly
+  ) {
     return (
       <PPOWERForm
         traineeId={
@@ -1174,6 +1375,18 @@ const canPromoteToP2 = [
         ← Back to Records
       </button>
 
+      {readOnly && (
+        <div style={archivedReadOnlyBannerStyle}>
+          <strong>
+            Archived Record
+          </strong>
+
+          <span>
+            This completed FTP record is read-only. Historical reports, evidence and linked records remain available.
+          </span>
+        </div>
+      )}
+
       <div style={cardStyle}>
         {!editing ? (
           <div
@@ -1198,14 +1411,16 @@ const canPromoteToP2 = [
               </p>
             </div>
 
-            <button
-              onClick={() =>
-                setEditing(true)
-              }
-              style={buttonStyle}
-            >
-              Edit Profile
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() =>
+                  setEditing(true)
+                }
+                style={buttonStyle}
+              >
+                Edit Profile
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -1264,9 +1479,11 @@ const canPromoteToP2 = [
           </div>
 
           <span style={permissionBadgeStyle}>
-            {canCompletePPOWER
-              ? "FTM CONTROLS AVAILABLE"
-              : "VIEW ONLY"}
+            {readOnly
+              ? "ARCHIVED · READ ONLY"
+              : canCompletePPOWER
+                ? "FTM CONTROLS AVAILABLE"
+                : "VIEW ONLY"}
           </span>
         </div>
 
@@ -1597,6 +1814,92 @@ const canPromoteToP2 = [
                   "0 0 6px",
               }}
             >
+              Orientation Report
+            </h3>
+
+            <p
+              style={{
+                ...mutedStyle,
+                margin: 0,
+              }}
+            >
+              The probationary officer&apos;s initial orientation patrol record.
+            </p>
+          </div>
+
+          <span style={countBadgeStyle}>
+            {orientationReport
+              ? "COMPLETED"
+              : "REQUIRED"}
+          </span>
+        </div>
+
+        {loadingOrientation ? (
+          <p style={mutedStyle}>
+            Loading Orientation Report...
+          </p>
+        ) : orientationError ? (
+          <div style={errorBoxStyle}>
+            Unable to load Orientation Report: {orientationError}
+          </div>
+        ) : !orientationReport ? (
+          <div style={emptyStateStyle}>
+            <strong>
+              Orientation not yet completed.
+            </strong>
+
+            <p
+              style={{
+                margin:
+                  "10px 0 0",
+                lineHeight: 1.6,
+              }}
+            >
+              This probationary officer cannot receive standard DORs until an Orientation Report has been submitted.
+            </p>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedOrientation(
+                orientationReport
+              )
+            }
+            style={dorCardStyle}
+          >
+            <div>
+              <strong>
+                Orientation Completed
+              </strong>
+
+              <div style={dorMetaStyle}>
+                {formatDate(
+                  orientationReport.patrol_date
+                )}
+                {" • "}
+                {orientationReport.completing_officer_name}
+                {" • "}
+                {orientationReport.duration}
+              </div>
+            </div>
+
+            <span style={viewLinkStyle}>
+              View Orientation Report
+            </span>
+          </button>
+        )}
+      </div>
+
+      <div style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h3
+              style={{
+                margin:
+                  "0 0 6px",
+              }}
+            >
               Structured Learning
               Checklist
             </h3>
@@ -1648,57 +1951,185 @@ const canPromoteToP2 = [
 
                   <div style={checklistRowsStyle}>
                     {sectionItems.map(
-                      (item) => (
-                        <div
-                          key={item.id}
-                          style={readOnlyChecklistItemStyle}
-                        >
-                          <span
-                            style={
-                              item.completed
-                                ? completedStatusIconStyle
-                                : pendingStatusIconStyle
-                            }
+                      (item) => {
+                        const expanded =
+                          Boolean(
+                            expandedNotebookItems[
+                              item.id
+                            ]
+                          );
+
+                        const linkedDOR =
+                          getNotebookCompletionDOR(
+                            item
+                          );
+
+                        const completionDate =
+                          item.completed_at ??
+                          item.completion_date ??
+                          linkedDOR?.patrol_date ??
+                          null;
+
+                        return (
+                          <div
+                            key={item.id}
+                            style={{
+                              ...readOnlyChecklistItemStyle,
+                              ...(expanded
+                                ? expandedChecklistItemStyle
+                                : {}),
+                            }}
                           >
-                            {item.completed
-                              ? "✓"
-                              : "○"}
-                          </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleNotebookItem(
+                                  item.id
+                                )
+                              }
+                              style={checklistAccordionButtonStyle}
+                            >
+                              <span
+                                style={
+                                  item.completed
+                                    ? completedStatusIconStyle
+                                    : pendingStatusIconStyle
+                                }
+                              >
+                                {item.completed
+                                  ? "✓"
+                                  : "○"}
+                              </span>
 
-                          <div style={checklistItemCopyStyle}>
-                            <strong>
-                              {item.item_label}
-                            </strong>
+                              <div style={checklistItemCopyStyle}>
+                                <strong>
+                                  {item.item_label}
+                                </strong>
 
-                            <span style={checklistStatusTextStyle}>
-                              {item.completed
-                                ? "Completed"
-                                : "Outstanding"}
-                            </span>
-
-                            {item.completed &&
-                              item.completion_date && (
-                                <span style={checklistEvidenceStyle}>
-                                  Completed {formatDate(
-                                    item.completion_date
-                                  )}
+                                <span style={checklistStatusTextStyle}>
+                                  {item.completed
+                                    ? "Completed"
+                                    : "Outstanding"}
                                 </span>
-                              )}
+                              </div>
 
-                            {item.completed &&
-                              item.evidence_link && (
-                                <a
-                                  href={item.evidence_link}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={evidenceLinkStyle}
-                                >
-                                  View course evidence ↗
-                                </a>
-                              )}
+                              <span style={checklistChevronStyle}>
+                                {expanded
+                                  ? "▲"
+                                  : "▼"}
+                              </span>
+                            </button>
+
+                            {expanded && (
+                              <div style={checklistDetailPanelStyle}>
+                                <div style={checklistDetailGridStyle}>
+                                  <div style={checklistDetailCardStyle}>
+                                    <span style={checklistDetailLabelStyle}>
+                                      Status
+                                    </span>
+                                    <strong>
+                                      {item.completed
+                                        ? "Completed"
+                                        : "Outstanding"}
+                                    </strong>
+                                  </div>
+
+                                  <div style={checklistDetailCardStyle}>
+                                    <span style={checklistDetailLabelStyle}>
+                                      Section
+                                    </span>
+                                    <strong>
+                                      {item.section}
+                                    </strong>
+                                  </div>
+
+                                  {item.completed && (
+                                    <>
+                                      <div style={checklistDetailCardStyle}>
+                                        <span style={checklistDetailLabelStyle}>
+                                          Patrol
+                                        </span>
+                                        <strong>
+                                          {item.completion_patrol_number
+                                            ? `Patrol ${item.completion_patrol_number}`
+                                            : linkedDOR
+                                              ? `Patrol ${linkedDOR.patrol_number}`
+                                              : "Not recorded"}
+                                        </strong>
+                                      </div>
+
+                                      <div style={checklistDetailCardStyle}>
+                                        <span style={checklistDetailLabelStyle}>
+                                          Completed By
+                                        </span>
+                                        <strong>
+                                          {linkedDOR?.ftoName ??
+                                            (item.completed_by
+                                              ? "Recorded officer"
+                                              : "Not recorded")}
+                                        </strong>
+                                      </div>
+
+                                      <div style={checklistDetailCardStyle}>
+                                        <span style={checklistDetailLabelStyle}>
+                                          Completion Date
+                                        </span>
+                                        <strong>
+                                          {completionDate
+                                            ? formatDate(
+                                                completionDate
+                                              )
+                                            : "Not recorded"}
+                                        </strong>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+
+                                <div style={checklistEvidencePanelStyle}>
+                                  <strong>
+                                    {item.completed
+                                      ? "Evidence"
+                                      : "Learning Goal"}
+                                  </strong>
+
+                                  <p style={checklistEvidenceTextStyle}>
+                                    {item.completed
+                                      ? item.completion_evidence ??
+                                        "No written evidence was recorded for this learning goal."
+                                      : "This learning goal remains outstanding and can be completed through a submitted DOR."}
+                                  </p>
+                                </div>
+
+                                {linkedDOR && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedDOR(
+                                        linkedDOR
+                                      )
+                                    }
+                                    style={viewLinkedDORButtonStyle}
+                                  >
+                                    View DOR Patrol {linkedDOR.patrol_number}
+                                  </button>
+                                )}
+
+                                {item.evidence_link && (
+                                  <a
+                                    href={item.evidence_link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={evidenceLinkStyle}
+                                  >
+                                    View course evidence ↗
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )
+                        );
+                      }
                     )}
                   </div>
                 </section>
@@ -1931,6 +2362,155 @@ const canPromoteToP2 = [
       <BBCodeRecord
         trainee={trainee}
       />
+
+      {selectedOrientation && (
+        <div
+          style={modalOverlayStyle}
+          onClick={() => {
+            setSelectedOrientation(
+              null
+            );
+            setOrientationCopied(
+              false
+            );
+          }}
+        >
+          <div
+            style={modalStyle}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div style={modalHeaderStyle}>
+              <div>
+                <h2
+                  style={{
+                    margin:
+                      "0 0 6px",
+                  }}
+                >
+                  Orientation Report
+                </h2>
+
+                <p
+                  style={{
+                    ...mutedStyle,
+                    margin: 0,
+                  }}
+                >
+                  {formatDate(
+                    selectedOrientation.patrol_date
+                  )}
+                  {" • "}
+                  {selectedOrientation.completing_officer_name}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedOrientation(
+                    null
+                  );
+                  setOrientationCopied(
+                    false
+                  );
+                }}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={modalInfoGridStyle}>
+              <Detail
+                label="Status"
+                value="Completed"
+              />
+
+              <Detail
+                label="Completing Officer"
+                value={
+                  selectedOrientation.completing_officer_name
+                }
+              />
+
+              <Detail
+                label="Officer Serial"
+                value={
+                  selectedOrientation.completing_officer_badge ||
+                  "Not recorded"
+                }
+              />
+
+              <Detail
+                label="Date"
+                value={formatDate(
+                  selectedOrientation.patrol_date
+                )}
+              />
+
+              <Detail
+                label="Start Time"
+                value={
+                  selectedOrientation.start_time
+                }
+              />
+
+              <Detail
+                label="End Time"
+                value={
+                  selectedOrientation.end_time
+                }
+              />
+
+              <Detail
+                label="Duration"
+                value={
+                  selectedOrientation.duration
+                }
+              />
+            </div>
+
+            <ReportSection
+              title="Incidents / Tasks"
+              value={
+                selectedOrientation.incidents_tasks ||
+                "None recorded"
+              }
+            />
+
+            <div style={modalButtonsStyle}>
+              <button
+                type="button"
+                onClick={
+                  copyOrientationBBCode
+                }
+                style={copyButtonStyle}
+              >
+                {orientationCopied
+                  ? "Copied!"
+                  : "Copy BBCode"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedOrientation(
+                    null
+                  );
+                  setOrientationCopied(
+                    false
+                  );
+                }}
+                style={secondaryButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedPPOWER && (
         <div
@@ -2879,6 +3459,17 @@ const completedPanelStyle = {
   fontWeight: 800,
 };
 
+const archivedReadOnlyBannerStyle = {
+  display: "grid",
+  gap: "5px",
+  padding: "14px 16px",
+  marginBottom: "18px",
+  color: "#cbd5e1",
+  backgroundColor: "#172033",
+  border: "1px solid #475569",
+  borderRadius: "10px",
+};
+
 const cardStyle = {
   padding: "24px",
   marginBottom: "22px",
@@ -2985,6 +3576,91 @@ const readOnlyChecklistItemStyle = {
   border: "1px solid #26354b",
   borderRadius: "8px",
 };
+
+const expandedChecklistItemStyle = {
+  border: "1px solid #3b82f6",
+  boxShadow:
+    "0 0 0 1px rgba(59, 130, 246, 0.14)",
+};
+
+const checklistAccordionButtonStyle = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  padding: 0,
+  color: "white",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  textAlign: "left" as const,
+};
+
+const checklistChevronStyle = {
+  marginLeft: "auto",
+  color: "#93c5fd",
+  fontSize: "12px",
+};
+
+const checklistDetailPanelStyle = {
+  display: "grid",
+  gap: "14px",
+  width: "100%",
+  marginTop: "14px",
+  paddingTop: "14px",
+  borderTop: "1px solid #334155",
+};
+
+const checklistDetailGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: "10px",
+};
+
+const checklistDetailCardStyle = {
+  display: "grid",
+  gap: "5px",
+  padding: "10px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "7px",
+};
+
+const checklistDetailLabelStyle = {
+  color: "#94a3b8",
+  fontSize: "11px",
+  fontWeight: 800,
+  textTransform: "uppercase" as const,
+};
+
+const checklistEvidencePanelStyle = {
+  display: "grid",
+  gap: "7px",
+  padding: "13px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const checklistEvidenceTextStyle = {
+  margin: 0,
+  color: "#cbd5e1",
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.55,
+};
+
+const viewLinkedDORButtonStyle = {
+  justifySelf: "start",
+  padding: "9px 13px",
+  color: "white",
+  background: "#2563eb",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
 
 const completedStatusIconStyle = {
   width: "25px",

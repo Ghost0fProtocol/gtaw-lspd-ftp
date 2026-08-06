@@ -25,6 +25,18 @@ type RecordsProps = {
   ) => void;
 };
 
+type RecordsTab =
+  | "active"
+  | "archived";
+
+type RecordTrainee =
+  Trainee & {
+    archived: boolean;
+    archivedAt:
+      | string
+      | null;
+  };
+
 function calculateProgress(
   notebook: NotebookSection[] = []
 ) {
@@ -54,7 +66,7 @@ function calculateProgress(
 
 function formatTrainee(
   trainee: any
-): Trainee {
+): RecordTrainee {
   const notebook =
     (
       trainee.notebook ??
@@ -155,6 +167,14 @@ function formatTrainee(
     promotedToP2By:
       trainee.promoted_to_p2_by ??
       null,
+
+    archived:
+      trainee.archived ===
+      true,
+
+    archivedAt:
+      trainee.archived_at ??
+      null,
   };
 }
 
@@ -165,7 +185,14 @@ export default function Records({
   const [
     traineeRecords,
     setTraineeRecords,
-  ] = useState<Trainee[]>([]);
+  ] = useState<RecordTrainee[]>([]);
+
+  const [
+    activeTab,
+    setActiveTab,
+  ] = useState<RecordsTab>(
+    "active"
+  );
 
   const [
     searchTerm,
@@ -176,7 +203,7 @@ export default function Records({
     selectedTrainee,
     setSelectedTrainee,
   ] =
-    useState<Trainee | null>(
+    useState<RecordTrainee | null>(
       null
     );
 
@@ -252,29 +279,50 @@ export default function Records({
       .trim()
       .toLowerCase();
 
-  const filteredTrainees =
+  const activeCount =
     traineeRecords.filter(
-      (trainee) => {
-        const searchableText = [
-          trainee.name,
-          trainee.reference,
-          trainee.status,
-          trainee.trainingStage,
-          trainee.ftm,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+      (trainee) =>
+        !trainee.archived
+    ).length;
 
-        return (
-          normalisedSearch ===
-            "" ||
-          searchableText.includes(
-            normalisedSearch
-          )
-        );
-      }
-    );
+  const archivedCount =
+    traineeRecords.filter(
+      (trainee) =>
+        trainee.archived
+    ).length;
+
+  const filteredTrainees =
+    traineeRecords
+      .filter(
+        (trainee) =>
+          activeTab ===
+          "active"
+            ? !trainee.archived
+            : trainee.archived
+      )
+      .filter(
+        (trainee) => {
+          const searchableText = [
+            trainee.name,
+            trainee.reference,
+            trainee.status,
+            trainee.trainingStage,
+            trainee.ftm,
+            trainee.archivedAt,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return (
+            normalisedSearch ===
+              "" ||
+            searchableText.includes(
+              normalisedSearch
+            )
+          );
+        }
+      );
 
   if (selectedTrainee) {
     return (
@@ -284,6 +332,9 @@ export default function Records({
         }
         user={user}
         openDOR={openDOR}
+        readOnly={
+          selectedTrainee.archived
+        }
         onBack={() =>
           setSelectedTrainee(
             null
@@ -292,19 +343,27 @@ export default function Records({
         onUpdate={(
           updatedTrainee
         ) => {
+          const updatedRecord: RecordTrainee = {
+            ...updatedTrainee,
+            archived:
+              selectedTrainee.archived,
+            archivedAt:
+              selectedTrainee.archivedAt,
+          };
+
           setTraineeRecords(
             (current) =>
               current.map(
                 (trainee) =>
                   trainee.id ===
-                  updatedTrainee.id
-                    ? updatedTrainee
+                  updatedRecord.id
+                    ? updatedRecord
                     : trainee
               )
           );
 
           setSelectedTrainee(
-            updatedTrainee
+            updatedRecord
           );
         }}
       />
@@ -346,9 +405,10 @@ export default function Records({
           </h2>
 
           <p style={subtitleStyle}>
-            Select a probationer to
-            open their complete FTP
-            record.
+            {activeTab ===
+              "active"
+              ? "Select an active probationer to open their complete FTP record."
+              : "Browse completed and archived probationer records in read-only mode."}
           </p>
         </div>
 
@@ -365,19 +425,22 @@ export default function Records({
             Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              setCreatingRecord(
-                true
-              )
-            }
-            style={
-              addButtonStyle
-            }
-          >
-            Add Record
-          </button>
+          {activeTab ===
+            "active" && (
+            <button
+              type="button"
+              onClick={() =>
+                setCreatingRecord(
+                  true
+                )
+              }
+              style={
+                addButtonStyle
+              }
+            >
+              Add Record
+            </button>
+          )}
         </div>
       </div>
 
@@ -387,6 +450,50 @@ export default function Records({
         </div>
       )}
 
+      <div style={tabsStyle}>
+        <button
+          type="button"
+          onClick={() =>
+            setActiveTab(
+              "active"
+            )
+          }
+          style={{
+            ...tabButtonStyle,
+            ...(activeTab ===
+            "active"
+              ? activeTabButtonStyle
+              : {}),
+          }}
+        >
+          Active Records
+          <span style={tabCountStyle}>
+            {activeCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setActiveTab(
+              "archived"
+            )
+          }
+          style={{
+            ...tabButtonStyle,
+            ...(activeTab ===
+            "archived"
+              ? activeTabButtonStyle
+              : {}),
+          }}
+        >
+          Archived Records
+          <span style={tabCountStyle}>
+            {archivedCount}
+          </span>
+        </button>
+      </div>
+
       <input
         value={searchTerm}
         onChange={(event) =>
@@ -394,7 +501,12 @@ export default function Records({
             event.target.value
           )
         }
-        placeholder="Search by name, reference, stage, status or FTM..."
+        placeholder={
+          activeTab ===
+          "active"
+            ? "Search active records by name, reference, stage, status or FTM..."
+            : "Search archived records by name, reference, stage, status or FTM..."
+        }
         style={searchInputStyle}
       />
 
@@ -425,8 +537,10 @@ export default function Records({
         ) : filteredTrainees.length ===
           0 ? (
           <p style={emptyStyle}>
-            No trainee records
-            found.
+            {activeTab ===
+              "active"
+              ? "No active trainee records found."
+              : "No archived trainee records found."}
           </p>
         ) : (
           filteredTrainees.map(
@@ -454,12 +568,20 @@ export default function Records({
                 <div>
                   <StageBadge
                     stage={
-                      trainee.trainingStage
+                      trainee.archived
+                        ? "Completed"
+                        : trainee.trainingStage
                     }
                   />
 
                   <p style={rowMetaStyle}>
-                    {trainee.status}
+                    {trainee.archived
+                      ? trainee.archivedAt
+                        ? `Archived ${formatArchiveDate(
+                            trainee.archivedAt
+                          )}`
+                        : "Archived"
+                      : trainee.status}
                   </p>
                 </div>
 
@@ -491,6 +613,30 @@ export default function Records({
         )}
       </div>
     </div>
+  );
+}
+
+function formatArchiveDate(
+  value: string
+) {
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
   );
 }
 
@@ -573,6 +719,42 @@ function getStageStyle(
       };
   }
 }
+
+const tabsStyle = {
+  display: "flex",
+  gap: "10px",
+  marginBottom: "18px",
+  flexWrap: "wrap" as const,
+};
+
+const tabButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
+  padding: "10px 14px",
+  color: "#cbd5e1",
+  backgroundColor: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const activeTabButtonStyle = {
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "1px solid #3b82f6",
+};
+
+const tabCountStyle = {
+  minWidth: "24px",
+  padding: "3px 7px",
+  textAlign: "center" as const,
+  backgroundColor:
+    "rgba(15, 23, 42, 0.55)",
+  borderRadius: "999px",
+  fontSize: "12px",
+};
 
 const headerStyle = {
   display: "flex",

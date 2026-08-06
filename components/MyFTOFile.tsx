@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { supabase } from "../lib/supabase";
+import FTOProbationPanel from "./FTOProbationPanel";
 
 type Props = {
   user: any;
@@ -24,6 +25,10 @@ type FTOFile = {
   original_bbcode: string | null;
   created_at: string;
   updated_at: string;
+  probation_status:
+    | "probationary"
+    | "qualified"
+    | "archived";
 };
 
 type FTOLogEntry = {
@@ -49,6 +54,14 @@ type Profile = {
   work_number: string | null;
   division: string | null;
 };
+
+const managementRoles = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
 
 export default function MyFTOFile({
   user,
@@ -375,6 +388,29 @@ export default function MyFTOFile({
           Refresh File
         </button>
       </div>
+
+      <FTOProbationPanel
+        user={user}
+        ftoFileId={ftoFile.id}
+        ftoProfileId={ftoFile.profile_id}
+        ftoName={
+          profile?.name ??
+          user.name ??
+          "Unknown Officer"
+        }
+        ftoSerial={
+          profile?.badge_number ??
+          "N/A"
+        }
+        readOnly={
+          !managementRoles.includes(
+            user?.role ?? ""
+          )
+        }
+        onChanged={() =>
+          void loadFTOFile()
+        }
+      />
 
       <div style={statsGridStyle}>
         <StatCard

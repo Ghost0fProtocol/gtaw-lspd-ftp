@@ -20,10 +20,18 @@ type NotebookItem = {
   section: string;
   item_label: string;
   completed: boolean;
+
   completion_date?: string | null;
+  completed_at?: string | null;
+
   evidence_link?: string | null;
+  completion_evidence?: string | null;
+
   completed_by?: string | null;
   completion_source?: string | null;
+
+  completion_patrol_number?: number | null;
+  completion_dor_id?: string | null;
 };
 
 type DORRecord = {
@@ -115,6 +123,13 @@ export default function MyNotebook({
   const [
     openSections,
     setOpenSections,
+  ] = useState<
+    Record<string, boolean>
+  >({});
+
+  const [
+    openHistoryItems,
+    setOpenHistoryItems,
   ] = useState<
     Record<string, boolean>
   >({});
@@ -478,6 +493,10 @@ export default function MyNotebook({
         .eq(
           "trainee_id",
           traineeRecordId
+        )
+        .eq(
+          "status",
+          "submitted"
         )
         .order(
           "patrol_number",
@@ -989,6 +1008,72 @@ export default function MyNotebook({
         null
       );
     }
+  }
+
+  function toggleHistoryItem(
+    itemId: string
+  ) {
+    setOpenHistoryItems(
+      (current) => ({
+        ...current,
+        [itemId]:
+          !current[
+            itemId
+          ],
+      })
+    );
+  }
+
+  function getCompletionDOR(
+    item: NotebookItem
+  ) {
+    if (
+      item.completion_dor_id
+    ) {
+      return (
+        dors.find(
+          (dor) =>
+            dor.id ===
+            item.completion_dor_id
+        ) ?? null
+      );
+    }
+
+    if (
+      item.completion_patrol_number
+    ) {
+      return (
+        dors.find(
+          (dor) =>
+            dor.patrol_number ===
+            item.completion_patrol_number
+        ) ?? null
+      );
+    }
+
+    return null;
+  }
+
+  function openCompletionDOR(
+    item: NotebookItem
+  ) {
+    const dor =
+      getCompletionDOR(
+        item
+      );
+
+    if (!dor) {
+      setDorError(
+        "The DOR linked to this learning goal could not be found."
+      );
+
+      return;
+    }
+
+    setDorError("");
+    setSelectedDOR(
+      dor
+    );
   }
 
   async function copyUnguidedBBCode(
@@ -1563,40 +1648,228 @@ export default function MyNotebook({
                   sectionItems.map(
                     (
                       item
-                    ) => (
-                      <div
-                        key={
-                          item.id
-                        }
-                        style={
-                          itemBox
-                        }
-                      >
-                        <span>
-                          {item.completed
-                            ? "✅"
-                            : "⬜"}
-                        </span>
+                    ) => {
+                      const completionDOR =
+                        getCompletionDOR(
+                          item
+                        );
 
-                        <div>
-                          <b>
-                            {
-                              item.item_label
+                      const completionDate =
+                        item.completed_at ??
+                        item.completion_date ??
+                        completionDOR?.patrol_date ??
+                        null;
+
+                      const completingFTO =
+                        completionDOR?.ftoName ??
+                        (
+                          item.completed_by
+                            ? "Recorded officer"
+                            : null
+                        );
+
+                      const hasHistory =
+                        Boolean(
+                          item.completion_evidence ||
+                          item.completion_patrol_number ||
+                          completionDate ||
+                          completionDOR
+                        );
+
+                      const historyOpen =
+                        Boolean(
+                          openHistoryItems[
+                            item.id
+                          ]
+                        );
+
+                      const statusLabel =
+                        item.completed
+                          ? "Completed"
+                          : "Outstanding";
+
+                      return (
+                        <div
+                          key={
+                            item.id
+                          }
+                          style={{
+                            ...itemHistoryCardStyle,
+                            ...(historyOpen
+                              ? expandedItemCardStyle
+                              : {}),
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleHistoryItem(
+                                item.id
+                              )
                             }
-                          </b>
-
-                          <p
+                            aria-expanded={
+                              historyOpen
+                            }
                             style={
-                              muted
+                              itemAccordionButtonStyle
                             }
                           >
-                            {item.completed
-                              ? "Completed"
-                              : "Pending"}
-                          </p>
+                            <div style={itemHistoryTitleStyle}>
+                              <span
+                                style={{
+                                  ...itemStatusIconStyle,
+                                  ...(item.completed
+                                    ? completedIconStyle
+                                    : outstandingIconStyle),
+                                }}
+                              >
+                                {item.completed
+                                  ? "✓"
+                                  : "○"}
+                              </span>
+
+                              <div style={itemTitleCopyStyle}>
+                                <b>
+                                  {
+                                    item.item_label
+                                  }
+                                </b>
+
+                                <span
+                                  style={{
+                                    ...itemStatusPillStyle,
+                                    ...(item.completed
+                                      ? completedStatusPillStyle
+                                      : outstandingStatusPillStyle),
+                                  }}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span style={itemChevronStyle}>
+                              {historyOpen
+                                ? "▲"
+                                : "▼"}
+                            </span>
+                          </button>
+
+                          {historyOpen && (
+                            <div style={historyPanelStyle}>
+                              {item.completed ? (
+                                <>
+                                  <div style={historyGridStyle}>
+                                    <HistoryDetail
+                                      label="Status"
+                                      value="Completed"
+                                    />
+
+                                    <HistoryDetail
+                                      label="Patrol"
+                                      value={
+                                        item.completion_patrol_number
+                                          ? `Patrol ${item.completion_patrol_number}`
+                                          : completionDOR
+                                            ? `Patrol ${completionDOR.patrol_number}`
+                                            : "Not recorded"
+                                      }
+                                    />
+
+                                    <HistoryDetail
+                                      label="Completed By"
+                                      value={
+                                        completingFTO ??
+                                        "Not recorded"
+                                      }
+                                    />
+
+                                    <HistoryDetail
+                                      label="Completion Date"
+                                      value={
+                                        completionDate
+                                          ? formatCompletionDate(
+                                              completionDate
+                                            )
+                                          : "Not recorded"
+                                      }
+                                    />
+
+                                    <HistoryDetail
+                                      label="Source"
+                                      value={
+                                        item.completion_source ??
+                                        (
+                                          completionDOR
+                                            ? "DOR"
+                                            : "Notebook"
+                                        )
+                                      }
+                                    />
+                                  </div>
+
+                                  <div style={historyEvidenceStyle}>
+                                    <strong>
+                                      Evidence
+                                    </strong>
+
+                                    <p style={historyEvidenceTextStyle}>
+                                      {item.completion_evidence ??
+                                        "No written evidence was recorded for this learning goal."}
+                                    </p>
+                                  </div>
+
+                                  {completionDOR && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openCompletionDOR(
+                                          item
+                                        )
+                                      }
+                                      style={viewDORButtonStyle}
+                                    >
+                                      View DOR Patrol {completionDOR.patrol_number}
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <div style={historyGridStyle}>
+                                    <HistoryDetail
+                                      label="Status"
+                                      value="Outstanding"
+                                    />
+
+                                    <HistoryDetail
+                                      label="Section"
+                                      value={
+                                        item.section
+                                      }
+                                    />
+
+                                    <HistoryDetail
+                                      label="Completion"
+                                      value="Not yet signed off"
+                                    />
+                                  </div>
+
+                                  <div style={outstandingDetailStyle}>
+                                    <strong>
+                                      Learning Goal
+                                    </strong>
+
+                                    <p style={historyEvidenceTextStyle}>
+                                      This learning goal remains outstanding. It can be assessed and completed from a submitted DOR when the probationary officer demonstrates the required standard.
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )
+                      );
+                    }
                   )}
               </div>
             )
@@ -2147,6 +2420,55 @@ export default function MyNotebook({
   );
 }
 
+function HistoryDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={historyDetailStyle}>
+      <span style={historyDetailLabelStyle}>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function formatCompletionDate(
+  value: string
+) {
+  const date =
+    value.includes("T")
+      ? new Date(value)
+      : new Date(
+          `${value}T00:00:00Z`
+        );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }
+  );
+}
+
 function formatDate(
   date: string
 ) {
@@ -2397,14 +2719,165 @@ const sectionButton = {
   cursor: "pointer",
 };
 
-const itemBox = {
-  display: "flex",
-  gap: "15px",
-  alignItems: "center",
+const itemHistoryCardStyle = {
+  display: "grid",
+  gap: "12px",
   padding: "14px",
   marginTop: "10px",
   background: "#111827",
+  border: "1px solid #253247",
   borderRadius: "8px",
+};
+
+const expandedItemCardStyle = {
+  borderColor: "#3b82f6",
+  boxShadow:
+    "0 0 0 1px rgba(59, 130, 246, 0.15)",
+};
+
+const itemAccordionButtonStyle = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  padding: 0,
+  color: "white",
+  backgroundColor: "transparent",
+  border: "none",
+  cursor: "pointer",
+  textAlign: "left" as const,
+};
+
+const itemHistoryTitleStyle = {
+  display: "flex",
+  gap: "13px",
+  alignItems: "center",
+  minWidth: 0,
+};
+
+const itemStatusIconStyle = {
+  width: "30px",
+  height: "30px",
+  display: "grid",
+  placeItems: "center",
+  flexShrink: 0,
+  border: "1px solid",
+  borderRadius: "999px",
+  fontWeight: 900,
+};
+
+const completedIconStyle = {
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.42)",
+  borderColor: "#16a34a",
+};
+
+const outstandingIconStyle = {
+  color: "#cbd5e1",
+  backgroundColor: "#172033",
+  borderColor: "#475569",
+};
+
+const itemTitleCopyStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap" as const,
+  minWidth: 0,
+};
+
+const itemStatusPillStyle = {
+  padding: "4px 8px",
+  border: "1px solid",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 800,
+  whiteSpace: "nowrap" as const,
+};
+
+const completedStatusPillStyle = {
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  borderColor: "#166534",
+};
+
+const outstandingStatusPillStyle = {
+  color: "#cbd5e1",
+  backgroundColor: "#334155",
+  borderColor: "#475569",
+};
+
+const itemChevronStyle = {
+  color: "#93c5fd",
+  fontSize: "12px",
+  flexShrink: 0,
+};
+
+const historyPanelStyle = {
+  display: "grid",
+  gap: "14px",
+  padding: "14px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const historyGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: "10px",
+};
+
+const historyDetailStyle = {
+  display: "grid",
+  gap: "5px",
+  padding: "10px",
+  background: "#172033",
+  borderRadius: "7px",
+};
+
+const historyDetailLabelStyle = {
+  color: "#94a3b8",
+  fontSize: "11px",
+  fontWeight: 800,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+};
+
+const historyEvidenceStyle = {
+  display: "grid",
+  gap: "7px",
+};
+
+const outstandingDetailStyle = {
+  display: "grid",
+  gap: "7px",
+  padding: "14px",
+  backgroundColor: "#172033",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+};
+
+const historyEvidenceTextStyle = {
+  margin: 0,
+  color: "#cbd5e1",
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.55,
+};
+
+const viewDORButtonStyle = {
+  justifySelf: "start",
+  padding: "9px 13px",
+  color: "white",
+  background: "#2563eb",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 800,
 };
 
 const unguidedFormCard = {

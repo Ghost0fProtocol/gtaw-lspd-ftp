@@ -38,7 +38,7 @@ const auditRoles = [
   "LSPD STAFF",
 ];
 
-const commentCardReviewRoles = [
+const reviewCentreRoles = [
   "Field Training Manager",
   "Field Training Supervisor",
   "FTP Staff",
@@ -61,7 +61,6 @@ const menuSections: MenuSection[] = [
       "My Notebook",
       "My FTO File",
       "FTO Records",
-      "Comment Card Centre",
     ],
   },
   {
@@ -71,7 +70,7 @@ const menuSections: MenuSection[] = [
       "FTP Management",
       "Batch Management",
       "Personnel Management",
-      "Role Requests",
+      "Review Centre",
     ],
   },
   {
@@ -92,12 +91,11 @@ const menuIcons:
     "My Notebook": "▤",
     "My FTO File": "▱",
     "FTO Records": "▥",
-    "Comment Card Centre": "▧",
+    "Review Centre": "▧",
     "Field Training Management Dashboard": "⌁",
     "FTP Management": "⌁",
     "Batch Management": "▦",
     "Personnel Management": "♙",
-    "Role Requests": "◇",
     "Audit Centre": "◈",
     "Training Calendar": "□",
     Settings: "⚙",
@@ -120,7 +118,13 @@ export default function Sidebar({
 
   const menuItems = [
     ...baseMenuItems,
-  ];
+  ].filter(
+    (item) =>
+      item !==
+        "Comment Card Centre" &&
+      item !==
+        "Role Requests"
+  );
 
   if (
     managementRoles.includes(
@@ -155,15 +159,15 @@ export default function Sidebar({
   }
 
   if (
-    commentCardReviewRoles.includes(
+    reviewCentreRoles.includes(
       role
     ) &&
     !menuItems.includes(
-      "Comment Card Centre"
+      "Review Centre"
     )
   ) {
     menuItems.push(
-      "Comment Card Centre"
+      "Review Centre"
     );
   }
 

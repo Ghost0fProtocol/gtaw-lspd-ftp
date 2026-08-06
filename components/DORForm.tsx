@@ -33,6 +33,7 @@ type Trainee = {
   badgeNumber: string;
   workNumber: string;
   trainingStage: string;
+  orientationCompleted: boolean;
 };
 
 type NotebookItem = {
@@ -41,6 +42,22 @@ type NotebookItem = {
   section: string;
   item_label: string;
   completed: boolean;
+};
+
+type LearningGoalOutcome =
+  | ""
+  | "yes"
+  | "no";
+
+type LearningGoalsDecision =
+  | ""
+  | "yes"
+  | "no";
+
+type LearningGoalAssessment = {
+  itemId: string;
+  outcome: LearningGoalOutcome;
+  evidence: string;
 };
 
 type DORFormData = {
@@ -60,6 +77,14 @@ type DORFormData = {
   aboveStandard: string;
   learningGoals: string;
   roleplayRemarks: string;
+};
+
+type PendingRatingJustification = {
+  categoryId: number;
+  rating:
+    | "1"
+    | "2"
+    | "4";
 };
 
 const evaluationCategories = [
@@ -89,6 +114,39 @@ const ratings: Exclude<DORRating, "">[] = [
   "4",
   "N/O",
 ];
+
+const ratingDefinitions = [
+  {
+    rating: "1",
+    title: "Unacceptable",
+    description:
+      "Performance was substantially below the required standard and needs immediate correction.",
+  },
+  {
+    rating: "2",
+    title: "Below Standard",
+    description:
+      "Performance did not consistently meet the required standard and needs improvement.",
+  },
+  {
+    rating: "3",
+    title: "Meets Standard",
+    description:
+      "Performance met the expected standard for the probationer's current stage of training.",
+  },
+  {
+    rating: "4",
+    title: "Above Standard",
+    description:
+      "Performance clearly exceeded the expected standard for the probationer's current stage of training.",
+  },
+  {
+    rating: "N/O",
+    title: "Not Observed",
+    description:
+      "There was no suitable opportunity to assess this category during the patrol.",
+  },
+] as const;
 
 const initialFormData: DORFormData = {
   probationaryOfficer: "",
@@ -157,6 +215,138 @@ function calculateDuration(
   ).padStart(2, "0")}`;
 }
 
+function buildLearningGoalsNarrative(
+  items: NotebookItem[],
+  assessments: Record<
+    string,
+    LearningGoalAssessment
+  >,
+  decision: LearningGoalsDecision,
+  noReason: string
+) {
+  if (decision === "no") {
+    const reason =
+      noReason.trim();
+
+    return reason
+      ? `No learning goals were completed during this patrol. Reason: ${reason}`
+      : "No learning goals were completed during this patrol.";
+  }
+
+  const completedItems =
+    items
+      .map(
+        (item) => ({
+          item,
+          assessment:
+            assessments[
+              item.id
+            ],
+        })
+      )
+      .filter(
+        ({
+          assessment,
+        }) =>
+          assessment?.outcome ===
+            "yes" &&
+          assessment.evidence.trim()
+      );
+
+  if (
+    completedItems.length ===
+    0
+  ) {
+    return "";
+  }
+
+  return completedItems
+    .map(
+      ({
+        item,
+        assessment,
+      }) =>
+        `${item.item_label}: ${assessment.evidence.trim()}`
+    )
+    .join("\n\n");
+}
+
+function buildGeneratedRatingLines(
+  ratingsRecord: Record<
+    number,
+    DORRating
+  >,
+  justifications: Record<
+    number,
+    string
+  >,
+  target:
+    | "below"
+    | "above"
+) {
+  return evaluationCategories
+    .filter(
+      (category) => {
+        const rating =
+          ratingsRecord[
+            category.id
+          ];
+
+        return target ===
+          "below"
+          ? rating === "1" ||
+              rating === "2"
+          : rating === "4";
+      }
+    )
+    .map(
+      (category) => {
+        const rating =
+          ratingsRecord[
+            category.id
+          ];
+
+        const justification =
+          justifications[
+            category.id
+          ]?.trim();
+
+        if (!justification) {
+          return "";
+        }
+
+        return `[Rating ${rating}] ${category.label}: ${justification}`;
+      }
+    )
+    .filter(Boolean);
+}
+
+function mergeGeneratedRatingText(
+  currentValue: string,
+  generatedLines: string[]
+) {
+  const manualLines =
+    currentValue
+      .split("\n")
+      .filter(
+        (line) =>
+          !line.trim().startsWith(
+            "[Rating "
+          )
+      )
+      .join("\n")
+      .trim();
+
+  return [
+    manualLines,
+    generatedLines.join(
+      "\n"
+    ),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export default function DORForm({
   traineeId,
 }: Props) {
@@ -187,6 +377,26 @@ export default function DORForm({
   ] = useState<Record<number, DORRating>>(
     createInitialRatings
   );
+
+  const [
+    ratingJustifications,
+    setRatingJustifications,
+  ] = useState<
+    Record<number, string>
+  >({});
+
+  const [
+    pendingRatingJustification,
+    setPendingRatingJustification,
+  ] = useState<
+    PendingRatingJustification |
+    null
+  >(null);
+
+  const [
+    ratingJustificationDraft,
+    setRatingJustificationDraft,
+  ] = useState("");
 
   const [
     generatedBBCode,
@@ -280,6 +490,43 @@ export default function DORForm({
   ] = useState<string[]>([]);
 
   const [
+    learningGoalAssessments,
+    setLearningGoalAssessments,
+  ] = useState<
+    Record<
+      string,
+      LearningGoalAssessment
+    >
+  >({});
+
+  const [
+    learningGoalsDecision,
+    setLearningGoalsDecision,
+  ] = useState<
+    LearningGoalsDecision
+  >("");
+
+  const [
+    noLearningGoalsReason,
+    setNoLearningGoalsReason,
+  ] = useState("");
+
+  const [
+    selectedGoalForModal,
+    setSelectedGoalForModal,
+  ] = useState<string>("");
+
+  const [
+    goalEvidenceDraft,
+    setGoalEvidenceDraft,
+  ] = useState("");
+
+  const [
+    showNoGoalsModal,
+    setShowNoGoalsModal,
+  ] = useState(false);
+
+  const [
     loadingNotebookItems,
     setLoadingNotebookItems,
   ] = useState(false);
@@ -294,8 +541,41 @@ export default function DORForm({
       try {
         setTraineeLoadError("");
 
-        const data =
-          await getTrainees();
+        const [
+          data,
+          orientationResult,
+        ] = await Promise.all([
+          getTrainees(),
+
+          supabase
+            .from(
+              "orientation_reports"
+            )
+            .select(
+              "trainee_id"
+            )
+            .eq(
+              "status",
+              "approved"
+            ),
+        ]);
+
+        if (
+          orientationResult.error
+        ) {
+          throw orientationResult.error;
+        }
+
+        const orientedTraineeIds =
+          new Set(
+            (
+              orientationResult.data ??
+              []
+            ).map(
+              (record) =>
+                record.trainee_id
+            )
+          );
 
         setTrainees(
           data.map(
@@ -317,6 +597,10 @@ export default function DORForm({
               trainingStage:
                 trainee.training_stage ??
                 "Week 1",
+              orientationCompleted:
+                orientedTraineeIds.has(
+                  trainee.id
+                ),
             })
           )
         );
@@ -456,7 +740,11 @@ export default function DORForm({
     ftoId,
     formData,
     evaluationRatings,
+    ratingJustifications,
     selectedNotebookItemIds,
+    learningGoalAssessments,
+    learningGoalsDecision,
+    noLearningGoalsReason,
     loadingDraft,
     saving,
     cancellingDraft,
@@ -505,18 +793,140 @@ export default function DORForm({
     );
   }
 
+  function applyRatingAndNarratives(
+    id: number,
+    rating: DORRating,
+    justification:
+      string | null
+  ) {
+    const nextRatings = {
+      ...evaluationRatings,
+      [id]: rating,
+    };
+
+    const nextJustifications = {
+      ...ratingJustifications,
+    };
+
+    if (
+      justification &&
+      (
+        rating === "1" ||
+        rating === "2" ||
+        rating === "4"
+      )
+    ) {
+      nextJustifications[
+        id
+      ] = justification.trim();
+    } else {
+      delete nextJustifications[
+        id
+      ];
+    }
+
+    setEvaluationRatings(
+      nextRatings
+    );
+
+    setRatingJustifications(
+      nextJustifications
+    );
+
+    const belowLines =
+      buildGeneratedRatingLines(
+        nextRatings,
+        nextJustifications,
+        "below"
+      );
+
+    const aboveLines =
+      buildGeneratedRatingLines(
+        nextRatings,
+        nextJustifications,
+        "above"
+      );
+
+    setFormData(
+      (current) => ({
+        ...current,
+        belowStandard:
+          mergeGeneratedRatingText(
+            current.belowStandard,
+            belowLines
+          ),
+        aboveStandard:
+          mergeGeneratedRatingText(
+            current.aboveStandard,
+            aboveLines
+          ),
+      })
+    );
+
+    setFormError("");
+    setSuccessMessage("");
+  }
+
   function updateRating(
     id: number,
     rating: DORRating
   ) {
-    setFormError("");
-    setSuccessMessage("");
+    if (
+      rating === "1" ||
+      rating === "2" ||
+      rating === "4"
+    ) {
+      setPendingRatingJustification({
+        categoryId:
+          id,
+        rating,
+      });
 
-    setEvaluationRatings(
-      (current) => ({
-        ...current,
-        [id]: rating,
-      })
+      setRatingJustificationDraft(
+        ratingJustifications[
+          id
+        ] ?? ""
+      );
+
+      return;
+    }
+
+    applyRatingAndNarratives(
+      id,
+      rating,
+      null
+    );
+  }
+
+  function saveRatingJustification() {
+    if (
+      !pendingRatingJustification
+    ) {
+      return;
+    }
+
+    if (
+      !ratingJustificationDraft.trim()
+    ) {
+      setFormError(
+        "Enter a justification for this rating."
+      );
+
+      return;
+    }
+
+    applyRatingAndNarratives(
+      pendingRatingJustification.categoryId,
+      pendingRatingJustification.rating,
+      ratingJustificationDraft
+    );
+
+    setPendingRatingJustification(
+      null
+    );
+
+    setRatingJustificationDraft(
+      ""
     );
   }
 
@@ -575,8 +985,43 @@ export default function DORForm({
         throw error;
       }
 
+      const items =
+        data ?? [];
+
       setIncompleteNotebookItems(
-        data ?? []
+        items
+      );
+
+      setLearningGoalAssessments(
+        (current) =>
+          Object.entries(
+            current
+          ).reduce(
+            (
+              next,
+              [
+                itemId,
+                assessment,
+              ]
+            ) => {
+              if (
+                items.some(
+                  (item) =>
+                    item.id ===
+                    itemId
+                )
+              ) {
+                next[itemId] =
+                  assessment;
+              }
+
+              return next;
+            },
+            {} as Record<
+              string,
+              LearningGoalAssessment
+            >
+          )
       );
     } catch (error) {
       console.error(
@@ -596,23 +1041,229 @@ export default function DORForm({
     }
   }
 
-  function toggleNotebookItemSelection(
+  function openLearningGoalModal(
     itemId: string
   ) {
+    const existing =
+      learningGoalAssessments[
+        itemId
+      ];
+
+    setSelectedGoalForModal(
+      itemId
+    );
+
+    setGoalEvidenceDraft(
+      existing?.evidence ??
+      ""
+    );
+  }
+
+  function saveLearningGoalFromModal() {
+    if (
+      !selectedGoalForModal
+    ) {
+      return;
+    }
+
+    if (
+      !goalEvidenceDraft.trim()
+    ) {
+      setFormError(
+        "Enter evidence for the selected learning goal."
+      );
+
+      return;
+    }
+
+    const next = {
+      ...learningGoalAssessments,
+      [selectedGoalForModal]: {
+        itemId:
+          selectedGoalForModal,
+        outcome:
+          "yes" as const,
+        evidence:
+          goalEvidenceDraft.trim(),
+      },
+    };
+
+    setLearningGoalAssessments(
+      next
+    );
+
+    setSelectedNotebookItemIds(
+      Object.values(
+        next
+      )
+        .filter(
+          (assessment) =>
+            assessment.outcome ===
+            "yes"
+        )
+        .map(
+          (assessment) =>
+            assessment.itemId
+        )
+    );
+
+    setFormData(
+      (current) => ({
+        ...current,
+        learningGoals:
+          buildLearningGoalsNarrative(
+            incompleteNotebookItems,
+            next,
+            "yes",
+            ""
+          ),
+      })
+    );
+
+    setSelectedGoalForModal("");
+    setGoalEvidenceDraft("");
+    setFormError("");
+    setSuccessMessage("");
+  }
+
+  function removeLearningGoalAssessment(
+    itemId: string
+  ) {
+    const next = {
+      ...learningGoalAssessments,
+    };
+
+    delete next[itemId];
+
+    setLearningGoalAssessments(
+      next
+    );
+
+    setSelectedNotebookItemIds(
+      Object.values(
+        next
+      )
+        .filter(
+          (assessment) =>
+            assessment.outcome ===
+            "yes"
+        )
+        .map(
+          (assessment) =>
+            assessment.itemId
+        )
+    );
+
+    setFormData(
+      (current) => ({
+        ...current,
+        learningGoals:
+          buildLearningGoalsNarrative(
+            incompleteNotebookItems,
+            next,
+            learningGoalsDecision,
+            noLearningGoalsReason
+          ),
+      })
+    );
+  }
+
+  function chooseLearningGoalsDecision(
+    decision: Exclude<
+      LearningGoalsDecision,
+      ""
+    >
+  ) {
+    setLearningGoalsDecision(
+      decision
+    );
+
     setFormError("");
     setSuccessMessage("");
 
-    setSelectedNotebookItemIds(
-      (current) =>
-        current.includes(itemId)
-          ? current.filter(
-              (id) => id !== itemId
-            )
-          : [
-              ...current,
-              itemId,
-            ]
+    if (decision === "yes") {
+      setShowNoGoalsModal(
+        false
+      );
+
+      setNoLearningGoalsReason(
+        ""
+      );
+
+      setFormData(
+        (current) => ({
+          ...current,
+          learningGoals:
+            buildLearningGoalsNarrative(
+              incompleteNotebookItems,
+              learningGoalAssessments,
+              "yes",
+              ""
+            ),
+        })
+      );
+
+      return;
+    }
+
+    setLearningGoalAssessments(
+      {}
     );
+
+    setSelectedNotebookItemIds(
+      []
+    );
+
+    setFormData(
+      (current) => ({
+        ...current,
+        learningGoals: "",
+      })
+    );
+
+    setShowNoGoalsModal(
+      true
+    );
+  }
+
+  function saveNoLearningGoalsReason() {
+    if (
+      !noLearningGoalsReason.trim()
+    ) {
+      setFormError(
+        "Enter why no learning goals were completed during this patrol."
+      );
+
+      return;
+    }
+
+    setLearningGoalAssessments(
+      {}
+    );
+
+    setSelectedNotebookItemIds(
+      []
+    );
+
+    setFormData(
+      (current) => ({
+        ...current,
+        learningGoals:
+          buildLearningGoalsNarrative(
+            incompleteNotebookItems,
+            {},
+            "no",
+            noLearningGoalsReason
+          ),
+      })
+    );
+
+    setShowNoGoalsModal(
+      false
+    );
+
+    setFormError("");
+    setSuccessMessage("");
   }
 
   async function loadExistingDraft(
@@ -731,12 +1382,103 @@ export default function DORForm({
         ),
       });
 
+      setRatingJustifications(
+        (
+          data.rating_justifications ??
+          {}
+        ) as Record<
+          number,
+          string
+        >
+      );
+
+      const rawAssessments =
+        data.notebook_assessments &&
+        typeof data.notebook_assessments ===
+          "object"
+          ? (
+              data.notebook_assessments as Record<
+                string,
+                unknown
+              >
+            )
+          : {};
+
+      const draftDecision =
+        rawAssessments.__decision ===
+          "yes" ||
+        rawAssessments.__decision ===
+          "no"
+          ? rawAssessments.__decision
+          : "";
+
+      const draftNoReason =
+        typeof rawAssessments.__no_reason ===
+          "string"
+          ? rawAssessments.__no_reason
+          : "";
+
+      const draftAssessments =
+        Object.entries(
+          rawAssessments
+        ).reduce(
+          (
+            next,
+            [
+              key,
+              value,
+            ]
+          ) => {
+            if (
+              key.startsWith(
+                "__"
+              )
+            ) {
+              return next;
+            }
+
+            if (
+              value &&
+              typeof value ===
+                "object"
+            ) {
+              next[key] =
+                value as LearningGoalAssessment;
+            }
+
+            return next;
+          },
+          {} as Record<
+            string,
+            LearningGoalAssessment
+          >
+        );
+
+      setLearningGoalsDecision(
+        draftDecision
+      );
+
+      setNoLearningGoalsReason(
+        draftNoReason
+      );
+
+      setLearningGoalAssessments(
+        draftAssessments
+      );
+
       setSelectedNotebookItemIds(
-        Array.isArray(
-          data.completed_notebook_items
+        Object.values(
+          draftAssessments
         )
-          ? data.completed_notebook_items
-          : []
+          .filter(
+            (assessment) =>
+              assessment.outcome ===
+              "yes"
+          )
+          .map(
+            (assessment) =>
+              assessment.itemId
+          )
       );
 
       setSaveStatus(
@@ -836,6 +1578,12 @@ export default function DORForm({
 
       setIncompleteNotebookItems([]);
       setSelectedNotebookItemIds([]);
+      setLearningGoalAssessments({});
+      setLearningGoalsDecision("");
+      setNoLearningGoalsReason("");
+      setSelectedGoalForModal("");
+      setGoalEvidenceDraft("");
+      setShowNoGoalsModal(false);
       setNotebookLoadError("");
 
       return;
@@ -848,6 +1596,39 @@ export default function DORForm({
       );
 
     if (!trainee) {
+      return;
+    }
+
+    if (
+      !trainee.orientationCompleted
+    ) {
+      setSelectedTrainee("");
+
+      setFormData(
+        (current) => ({
+          ...current,
+          probationaryOfficer: "",
+          badgeNumber: "",
+          rank: "",
+          workNumber: "",
+          patrolNumber: "",
+        })
+      );
+
+      setIncompleteNotebookItems([]);
+      setSelectedNotebookItemIds([]);
+      setLearningGoalAssessments({});
+      setLearningGoalsDecision("");
+      setNoLearningGoalsReason("");
+      setSelectedGoalForModal("");
+      setGoalEvidenceDraft("");
+      setShowNoGoalsModal(false);
+      setNotebookLoadError("");
+
+      setFormError(
+        `${trainee.name} must complete an orientation report before a DOR can be started.`
+      );
+
       return;
     }
 
@@ -1039,15 +1820,29 @@ export default function DORForm({
         formData.aboveStandard.trim() ||
         null,
       learning_goals:
-        formData.learningGoals.trim() ||
+        buildLearningGoalsNarrative(
+          incompleteNotebookItems,
+          learningGoalAssessments,
+          learningGoalsDecision,
+          noLearningGoalsReason
+        ) ||
         null,
       roleplay_remarks:
         formData.roleplayRemarks.trim() ||
         null,
       ratings:
         evaluationRatings,
+      rating_justifications:
+        ratingJustifications,
       completed_notebook_items:
         selectedNotebookItemIds,
+      notebook_assessments: {
+        ...learningGoalAssessments,
+        __decision:
+          learningGoalsDecision,
+        __no_reason:
+          noLearningGoalsReason,
+      },
       patrol_type:
         patrolType,
       status:
@@ -1366,6 +2161,90 @@ export default function DORForm({
       );
     }
 
+    if (
+      !learningGoalsDecision
+    ) {
+      missingItems.push(
+        "Learning goals completed: Yes or No"
+      );
+    }
+
+    if (
+      learningGoalsDecision ===
+        "yes" &&
+      selectedNotebookItemIds.length ===
+        0
+    ) {
+      missingItems.push(
+        "At least one completed learning goal"
+      );
+    }
+
+    if (
+      learningGoalsDecision ===
+        "no" &&
+      !noLearningGoalsReason.trim()
+    ) {
+      missingItems.push(
+        "Reason no learning goals were completed"
+      );
+    }
+
+    Object.values(
+      learningGoalAssessments
+    ).forEach(
+      (assessment) => {
+        const item =
+          incompleteNotebookItems.find(
+            (notebookItem) =>
+              notebookItem.id ===
+              assessment.itemId
+          );
+
+        if (
+          assessment.outcome &&
+          !assessment.evidence.trim()
+        ) {
+          missingItems.push(
+            `Evidence: ${item?.item_label ?? "Learning goal"}`
+          );
+        }
+
+        if (
+          !assessment.outcome &&
+          assessment.evidence.trim()
+        ) {
+          missingItems.push(
+            `Yes / No decision: ${item?.item_label ?? "Learning goal"}`
+          );
+        }
+      }
+    );
+
+    evaluationCategories.forEach(
+      (category) => {
+        const rating =
+          evaluationRatings[
+            category.id
+          ];
+
+        if (
+          (
+            rating === "1" ||
+            rating === "2" ||
+            rating === "4"
+          ) &&
+          !ratingJustifications[
+            category.id
+          ]?.trim()
+        ) {
+          missingItems.push(
+            `Rating justification: ${category.label}`
+          );
+        }
+      }
+    );
+
     const missingRatings =
       evaluationCategories.filter(
         (category) =>
@@ -1413,13 +2292,64 @@ export default function DORForm({
       return;
     }
 
+    if (autosaveTimeout.current) {
+      clearTimeout(
+        autosaveTimeout.current
+      );
+
+      autosaveTimeout.current =
+        null;
+    }
+
     setSaving(true);
     setFormError("");
     setSuccessMessage("");
 
+    let autosaveWaitCount = 0;
+
+    while (
+      savingDraftRef.current &&
+      autosaveWaitCount < 40
+    ) {
+      await new Promise<void>(
+        (resolve) => {
+          setTimeout(
+            resolve,
+            50
+          );
+        }
+      );
+
+      autosaveWaitCount += 1;
+    }
+
+    if (
+      savingDraftRef.current
+    ) {
+      setSaving(false);
+
+      setFormError(
+        "The DOR is still autosaving. Wait a moment and submit again."
+      );
+
+      return;
+    }
+
+    const learningGoalsNarrative =
+      buildLearningGoalsNarrative(
+        incompleteNotebookItems,
+        learningGoalAssessments,
+        learningGoalsDecision,
+        noLearningGoalsReason
+      );
+
     const bbcode =
       generateDORBBCode(
-        formData,
+        {
+          ...formData,
+          learningGoals:
+            learningGoalsNarrative,
+        },
         evaluationRatings
       );
 
@@ -1461,15 +2391,29 @@ export default function DORForm({
           formData.aboveStandard.trim() ||
           null,
         learning_goals:
-          formData.learningGoals.trim() ||
+          buildLearningGoalsNarrative(
+            incompleteNotebookItems,
+            learningGoalAssessments,
+            learningGoalsDecision,
+            noLearningGoalsReason
+          ) ||
           null,
         roleplay_remarks:
           formData.roleplayRemarks.trim() ||
           null,
         ratings:
           evaluationRatings,
+        rating_justifications:
+          ratingJustifications,
         completed_notebook_items:
           selectedNotebookItemIds,
+        notebook_assessments: {
+          ...learningGoalAssessments,
+          __decision:
+            learningGoalsDecision,
+          __no_reason:
+            noLearningGoalsReason,
+        },
         bbcode,
         patrol_type:
           patrolType,
@@ -1485,6 +2429,11 @@ export default function DORForm({
         submitted_at:
           submittedAt,
       };
+
+      console.log(
+        "DOR FINAL SUBMISSION PAYLOAD",
+        submittedPayload
+      );
 
       let savedDORId =
         draftId;
@@ -1533,27 +2482,48 @@ export default function DORForm({
 
           execute:
             async () => {
-              if (draftId) {
-                const result =
-                  await supabase
-                    .from("dors")
-                    .update(
-                      submittedPayload
-                    )
-                    .eq(
-                      "id",
-                      draftId
-                    )
-                    .select("id")
-                    .single();
+              const currentDraftId =
+                draftIdRef.current ??
+                draftId;
+
+              if (
+                currentDraftId
+              ) {
+                const {
+                  error:
+                    updateError,
+                } = await supabase
+                  .from("dors")
+                  .update(
+                    submittedPayload
+                  )
+                  .eq(
+                    "id",
+                    currentDraftId
+                  )
+                  .eq(
+                    "trainee_id",
+                    selectedTrainee
+                  )
+                  .eq(
+                    "status",
+                    "draft"
+                  );
 
                 if (
-                  result.error
+                  updateError
                 ) {
-                  throw result.error;
+                  throw updateError;
                 }
 
-                return result;
+                return {
+                  data: {
+                    id:
+                      currentDraftId,
+                  },
+                  error:
+                    null,
+                };
               }
 
               const result =
@@ -1649,31 +2619,64 @@ export default function DORForm({
 
             execute:
               async () => {
-                const result =
-                  await supabase
+                const completionRows =
+                  selectedItems.map(
+                    (item) => ({
+                      ...item,
+                      assessment:
+                        learningGoalAssessments[
+                          item.id
+                        ],
+                    })
+                  );
+
+                for (
+                  const item of
+                  completionRows
+                ) {
+                  const {
+                    error,
+                  } = await supabase
                     .from(
                       "notebook_items"
                     )
                     .update({
                       completed:
                         true,
+                      completed_at:
+                        submittedAt,
+                      completed_by:
+                        ftoId,
+                      completion_dor_id:
+                        savedDORId,
+                      completion_patrol_number:
+                        Number(
+                          formData.patrolNumber
+                        ),
+                      completion_evidence:
+                        item.assessment
+                          ?.evidence
+                          ?.trim() ||
+                        null,
                     })
-                    .in(
+                    .eq(
                       "id",
-                      selectedNotebookItemIds
+                      item.id
                     )
                     .eq(
                       "trainee_id",
                       selectedTrainee
                     );
 
-                if (
-                  result.error
-                ) {
-                  throw result.error;
+                  if (error) {
+                    throw error;
+                  }
                 }
 
-                return result;
+                return {
+                  completed:
+                    completionRows.length,
+                };
               },
           });
         } catch (
@@ -1916,9 +2919,18 @@ export default function DORForm({
       setEvaluationRatings(
         createInitialRatings()
       );
+      setRatingJustifications({});
+      setPendingRatingJustification(null);
+      setRatingJustificationDraft("");
 
       setIncompleteNotebookItems([]);
       setSelectedNotebookItemIds([]);
+      setLearningGoalAssessments({});
+      setLearningGoalsDecision("");
+      setNoLearningGoalsReason("");
+      setSelectedGoalForModal("");
+      setGoalEvidenceDraft("");
+      setShowNoGoalsModal(false);
       setNotebookLoadError("");
 
       setCopied(false);
@@ -2132,9 +3144,18 @@ export default function DORForm({
     setEvaluationRatings(
       createInitialRatings()
     );
+    setRatingJustifications({});
+    setPendingRatingJustification(null);
+    setRatingJustificationDraft("");
 
     setIncompleteNotebookItems([]);
     setSelectedNotebookItemIds([]);
+    setLearningGoalAssessments({});
+    setLearningGoalsDecision("");
+    setNoLearningGoalsReason("");
+    setSelectedGoalForModal("");
+    setGoalEvidenceDraft("");
+    setShowNoGoalsModal(false);
     setNotebookLoadError("");
 
     setGeneratedBBCode("");
@@ -2277,12 +3298,22 @@ export default function DORForm({
                 <option
                   key={trainee.id}
                   value={trainee.id}
+                  disabled={
+                    !trainee.orientationCompleted
+                  }
                 >
                   {trainee.name}
+                  {!trainee.orientationCompleted
+                    ? " — Orientation Required"
+                    : ""}
                 </option>
               )
             )}
           </select>
+
+          <p style={orientationGateHelpStyle}>
+            Probationary officers must have a submitted orientation report before a normal DOR can be started.
+          </p>
 
           <div style={gridStyle}>
             <div>
@@ -2609,19 +3640,16 @@ export default function DORForm({
         </div>
 
         <div style={cardStyle}>
-          <div
-            style={
-              sectionHeaderStyle
-            }
-          >
+          <div style={sectionHeaderStyle}>
             <div>
               <h3
                 style={{
                   ...headingStyle,
-                  marginBottom: "6px",
+                  marginBottom:
+                    "6px",
                 }}
               >
-                Checklist Items Completed This Patrol
+                Learning Goals
               </h3>
 
               <p
@@ -2630,106 +3658,292 @@ export default function DORForm({
                   margin: 0,
                 }}
               >
-                Select incomplete notebook items completed during this patrol.
-                They will be checked off after the DOR saves successfully.
+                Confirm whether any outstanding learning goals were completed during this patrol.
               </p>
             </div>
 
-            <span
-              style={
-                ratingCountStyle
-              }
-            >
+            <span style={ratingCountStyle}>
               {
                 selectedNotebookItemIds.length
               }{" "}
-              selected
+              completed
             </span>
           </div>
 
-          {loadingNotebookItems ? (
+          {!selectedTrainee ? (
+            <div style={emptyChecklistStyle}>
+              Select a trainee to load their outstanding learning goals.
+            </div>
+          ) : loadingNotebookItems ? (
             <p style={subTextStyle}>
-              Loading incomplete checklist items...
+              Loading outstanding learning goals...
             </p>
           ) : notebookLoadError ? (
             <div style={errorStyle}>
-              Unable to load the trainee checklist:{" "}
+              Unable to load the trainee&apos;s learning goals:{" "}
               {notebookLoadError}
             </div>
-          ) : !selectedTrainee ? (
-            <div style={emptyChecklistStyle}>
-              Select a trainee to load their incomplete checklist items.
-            </div>
-          ) : incompleteNotebookItems.length === 0 ? (
-            <div style={completeChecklistStyle}>
-              All available checklist items are already complete.
-            </div>
           ) : (
-            <div style={checklistSectionsStyle}>
-              {Object.entries(
-                notebookItemsBySection
-              ).map(
-                ([
-                  section,
-                  sectionItems,
-                ]) => (
-                  <div
-                    key={section}
-                    style={
-                      checklistSectionStyle
+            <>
+              <div style={learningGoalQuestionStyle}>
+                <strong>
+                  Did the probationer complete any learning goals during this patrol?
+                </strong>
+
+                <div style={goalDecisionRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      chooseLearningGoalsDecision(
+                        "yes"
+                      )
                     }
+                    disabled={
+                      saving ||
+                      incompleteNotebookItems.length ===
+                        0
+                    }
+                    style={{
+                      ...goalDecisionButtonStyle,
+                      ...(learningGoalsDecision ===
+                      "yes"
+                        ? goalYesButtonStyle
+                        : goalNeutralButtonStyle),
+                    }}
                   >
-                    <h4
-                      style={
-                        checklistSectionHeadingStyle
-                      }
-                    >
-                      {section}
-                    </h4>
+                    ✓ Yes
+                  </button>
 
-                    <div
-                      style={
-                        checklistItemsStyle
+                  <button
+                    type="button"
+                    onClick={() =>
+                      chooseLearningGoalsDecision(
+                        "no"
+                      )
+                    }
+                    disabled={saving}
+                    style={{
+                      ...goalDecisionButtonStyle,
+                      ...(learningGoalsDecision ===
+                      "no"
+                        ? goalNoButtonStyle
+                        : goalNeutralButtonStyle),
+                    }}
+                  >
+                    ✕ No
+                  </button>
+                </div>
+
+                {incompleteNotebookItems.length ===
+                  0 && (
+                  <p style={subTextStyle}>
+                    No outstanding learning goals are currently available for this trainee.
+                  </p>
+                )}
+              </div>
+
+              {learningGoalsDecision ===
+                "yes" && (
+                <div style={goalSelectorPanelStyle}>
+                  <label style={labelStyle}>
+                    Select an outstanding learning goal
+                  </label>
+
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const itemId =
+                        event.target.value;
+
+                      if (itemId) {
+                        openLearningGoalModal(
+                          itemId
+                        );
                       }
-                    >
-                      {sectionItems.map(
+                    }}
+                    disabled={
+                      saving ||
+                      incompleteNotebookItems.length ===
+                        0
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">
+                      Choose a learning goal...
+                    </option>
+
+                    {incompleteNotebookItems
+                      .filter(
+                        (item) =>
+                          learningGoalAssessments[
+                            item.id
+                          ]?.outcome !==
+                          "yes"
+                      )
+                      .map(
                         (item) => (
-                          <label
+                          <option
                             key={item.id}
-                            style={
-                              checklistItemStyle
-                            }
+                            value={item.id}
                           >
-                            <input
-                              type="checkbox"
-                              checked={
-                                selectedNotebookItemIds.includes(
-                                  item.id
-                                )
-                              }
-                              onChange={() =>
-                                toggleNotebookItemSelection(
-                                  item.id
-                                )
-                              }
-                              disabled={
-                                saving
-                              }
-                            />
-
-                            <span>
-                              {
-                                item.item_label
-                              }
-                            </span>
-                          </label>
+                            {item.section} — {item.item_label}
+                          </option>
                         )
                       )}
+                  </select>
+
+                  {selectedNotebookItemIds.length >
+                    0 && (
+                    <div style={selectedGoalsListStyle}>
+                      {selectedNotebookItemIds.map(
+                        (itemId) => {
+                          const item =
+                            incompleteNotebookItems.find(
+                              (candidate) =>
+                                candidate.id ===
+                                itemId
+                            );
+
+                          const assessment =
+                            learningGoalAssessments[
+                              itemId
+                            ];
+
+                          if (
+                            !item ||
+                            !assessment
+                          ) {
+                            return null;
+                          }
+
+                          return (
+                            <div
+                              key={itemId}
+                              style={selectedGoalCardStyle}
+                            >
+                              <div>
+                                <strong>
+                                  {item.item_label}
+                                </strong>
+
+                                <p style={selectedGoalEvidenceStyle}>
+                                  {assessment.evidence}
+                                </p>
+                              </div>
+
+                              <div style={selectedGoalActionsStyle}>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openLearningGoalModal(
+                                      itemId
+                                    )
+                                  }
+                                  disabled={saving}
+                                  style={secondaryButtonStyle}
+                                >
+                                  Edit
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeLearningGoalAssessment(
+                                      itemId
+                                    )
+                                  }
+                                  disabled={saving}
+                                  style={cancelDraftButtonStyle}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                      )}
                     </div>
-                  </div>
-                )
+                  )}
+                </div>
               )}
-            </div>
+
+              {learningGoalsDecision ===
+                "no" &&
+                noLearningGoalsReason && (
+                <div style={noGoalsReasonStyle}>
+                  <strong>
+                    No learning goals completed
+                  </strong>
+
+                  <p
+                    style={{
+                      margin:
+                        "6px 0 0",
+                    }}
+                  >
+                    {noLearningGoalsReason}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowNoGoalsModal(
+                        true
+                      )
+                    }
+                    disabled={saving}
+                    style={{
+                      ...secondaryButtonStyle,
+                      marginTop:
+                        "12px",
+                    }}
+                  >
+                    Edit Reason
+                  </button>
+                </div>
+              )}
+
+              {learningGoalsDecision && (
+                <div style={narrativePreviewStyle}>
+                  <h4
+                    style={{
+                      margin:
+                        "0 0 6px",
+                    }}
+                  >
+                    Auto-Populated Learning Goals
+                  </h4>
+
+                  <p
+                    style={{
+                      ...subTextStyle,
+                      margin:
+                        "0 0 12px",
+                    }}
+                  >
+                    This text will be inserted into the DOR and BBCode automatically.
+                  </p>
+
+                  <textarea
+                    value={buildLearningGoalsNarrative(
+                      incompleteNotebookItems,
+                      learningGoalAssessments,
+                      learningGoalsDecision,
+                      noLearningGoalsReason
+                    )}
+                    readOnly
+                    placeholder="Complete the learning-goal flow above to generate the DOR text."
+                    style={{
+                      ...textareaStyle,
+                      minHeight:
+                        "150px",
+                      backgroundColor:
+                        "#172033",
+                    }}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -2759,6 +3973,33 @@ export default function DORForm({
               }{" "}
               completed
             </span>
+          </div>
+
+          <div style={ratingDefinitionsStyle}>
+            {ratingDefinitions.map(
+              (definition) => (
+                <div
+                  key={
+                    definition.rating
+                  }
+                  style={ratingDefinitionCardStyle}
+                >
+                  <span style={ratingDefinitionBadgeStyle}>
+                    {definition.rating}
+                  </span>
+
+                  <div>
+                    <strong>
+                      {definition.title}
+                    </strong>
+
+                    <p style={ratingDefinitionTextStyle}>
+                      {definition.description}
+                    </p>
+                  </div>
+                </div>
+              )
+            )}
           </div>
 
           {evaluationCategories.map(
@@ -2898,25 +4139,6 @@ export default function DORForm({
           />
 
           <label style={spacedLabelStyle}>
-            Learning Goals
-          </label>
-
-          <textarea
-            placeholder="Enter learning goals for the trainee, or leave blank for None."
-            value={
-              formData.learningGoals
-            }
-            onChange={(event) =>
-              updateField(
-                "learningGoals",
-                event.target.value
-              )
-            }
-            disabled={saving}
-            style={textareaStyle}
-          />
-
-          <label style={spacedLabelStyle}>
             Roleplay Remarks
           </label>
 
@@ -3043,6 +4265,276 @@ export default function DORForm({
         </div>
       </form>
 
+      {pendingRatingJustification && (
+        <div style={modalOverlayStyle}>
+          <div style={learningGoalModalStyle}>
+            <div style={modalHeaderStyle}>
+              <div>
+                <p style={patrolTypeLabelStyle}>
+                  RATING JUSTIFICATION
+                </p>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  Rating {
+                    pendingRatingJustification.rating
+                  }: {
+                    evaluationCategories.find(
+                      (category) =>
+                        category.id ===
+                        pendingRatingJustification.categoryId
+                    )?.label
+                  }
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingRatingJustification(
+                    null
+                  );
+                  setRatingJustificationDraft(
+                    ""
+                  );
+                }}
+                style={modalCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={subTextStyle}>
+              Explain the observed performance that supports this rating. Ratings 1 and 2 populate Below Standard; rating 4 populates Above Standard.
+            </p>
+
+            <textarea
+              value={
+                ratingJustificationDraft
+              }
+              onChange={(event) =>
+                setRatingJustificationDraft(
+                  event.target.value
+                )
+              }
+              placeholder="Enter the evidence and reasoning for this rating."
+              style={{
+                ...textareaStyle,
+                minHeight:
+                  "180px",
+              }}
+            />
+
+            <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingRatingJustification(
+                    null
+                  );
+                  setRatingJustificationDraft(
+                    ""
+                  );
+                }}
+                style={secondaryButtonStyle}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  saveRatingJustification
+                }
+                style={primaryButtonStyle}
+              >
+                Save Rating
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedGoalForModal && (
+        <div style={modalOverlayStyle}>
+          <div style={learningGoalModalStyle}>
+            <div style={modalHeaderStyle}>
+              <div>
+                <p style={patrolTypeLabelStyle}>
+                  LEARNING GOAL COMPLETION
+                </p>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  {
+                    incompleteNotebookItems.find(
+                      (item) =>
+                        item.id ===
+                        selectedGoalForModal
+                    )?.item_label
+                  }
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedGoalForModal(
+                    ""
+                  );
+                  setGoalEvidenceDraft(
+                    ""
+                  );
+                }}
+                style={modalCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={subTextStyle}>
+              Record what the probationer did, the standard demonstrated and any coaching or support provided.
+            </p>
+
+            <label style={spacedLabelStyle}>
+              Evidence
+            </label>
+
+            <textarea
+              value={
+                goalEvidenceDraft
+              }
+              onChange={(event) =>
+                setGoalEvidenceDraft(
+                  event.target.value
+                )
+              }
+              placeholder="Enter the evidence supporting completion of this learning goal."
+              style={{
+                ...textareaStyle,
+                minHeight:
+                  "180px",
+              }}
+            />
+
+            <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedGoalForModal(
+                    ""
+                  );
+                  setGoalEvidenceDraft(
+                    ""
+                  );
+                }}
+                style={secondaryButtonStyle}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  saveLearningGoalFromModal
+                }
+                style={primaryButtonStyle}
+              >
+                Save Learning Goal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNoGoalsModal && (
+        <div style={modalOverlayStyle}>
+          <div style={learningGoalModalStyle}>
+            <div style={modalHeaderStyle}>
+              <div>
+                <p style={patrolTypeLabelStyle}>
+                  LEARNING GOALS
+                </p>
+
+                <h3
+                  style={{
+                    margin:
+                      "5px 0 0",
+                  }}
+                >
+                  Why were no learning goals completed?
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowNoGoalsModal(
+                    false
+                  )
+                }
+                style={modalCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={subTextStyle}>
+              Give a brief reason, such as no suitable opportunity arising during the patrol.
+            </p>
+
+            <textarea
+              value={
+                noLearningGoalsReason
+              }
+              onChange={(event) =>
+                setNoLearningGoalsReason(
+                  event.target.value
+                )
+              }
+              placeholder="Explain why no learning goals were completed."
+              style={{
+                ...textareaStyle,
+                minHeight:
+                  "160px",
+              }}
+            />
+
+            <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() =>
+                  setShowNoGoalsModal(
+                    false
+                  )
+                }
+                style={secondaryButtonStyle}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  saveNoLearningGoalsReason
+                }
+                style={primaryButtonStyle}
+              >
+                Save Reason
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {generatedBBCode && (
         <div
           style={{
@@ -3167,8 +4659,14 @@ function dorAuditSnapshot(
     ratings:
       payload.ratings,
 
+    rating_justifications:
+      payload.rating_justifications,
+
     completed_notebook_item_ids:
       selectedNotebookItemIds,
+
+    notebook_assessments:
+      payload.notebook_assessments,
 
     status:
       payload.status,
@@ -3332,6 +4830,14 @@ const finalEvaluationBadgeStyle = {
   backgroundColor:
     "rgba(154, 52, 18, 0.3)",
   borderColor: "#ea580c",
+};
+
+const orientationGateHelpStyle = {
+  margin:
+    "-10px 0 22px",
+  color: "#94a3b8",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
 
 const cardStyle = {
@@ -3629,4 +5135,245 @@ const completeChecklistStyle = {
     "rgba(20, 83, 45, 0.35)",
   border: "1px solid #166534",
   borderRadius: "8px",
+};
+
+const learningGoalCardsStyle = {
+  display: "grid",
+  gap: "14px",
+  padding: "14px",
+};
+
+const learningGoalCardStyle = {
+  padding: "16px",
+  backgroundColor: "#172033",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const learningGoalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  flexWrap: "wrap" as const,
+};
+
+const goalStatusBadgeStyle = {
+  padding: "5px 9px",
+  border: "1px solid",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 800,
+};
+
+const goalYesBadgeStyle = {
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  borderColor: "#166534",
+};
+
+const goalNoBadgeStyle = {
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  borderColor: "#991b1b",
+};
+
+const goalUnassessedBadgeStyle = {
+  color: "#cbd5e1",
+  backgroundColor: "#334155",
+  borderColor: "#475569",
+};
+
+const goalDecisionRowStyle = {
+  display: "flex",
+  gap: "10px",
+  marginTop: "14px",
+};
+
+const goalDecisionButtonStyle = {
+  minWidth: "92px",
+  padding: "10px 14px",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const goalNeutralButtonStyle = {
+  color: "#cbd5e1",
+  backgroundColor: "#0f172a",
+  borderColor: "#475569",
+};
+
+const goalYesButtonStyle = {
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.45)",
+  borderColor: "#16a34a",
+};
+
+const goalNoButtonStyle = {
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.45)",
+  borderColor: "#dc2626",
+};
+
+const goalEvidenceStyle = {
+  ...textareaStyle,
+  minHeight: "110px",
+};
+
+const narrativePreviewStyle = {
+  padding: "16px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+
+const learningGoalQuestionStyle = {
+  display: "grid",
+  gap: "14px",
+  padding: "16px",
+  marginTop: "18px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const goalSelectorPanelStyle = {
+  display: "grid",
+  gap: "14px",
+  padding: "16px",
+  marginTop: "14px",
+  backgroundColor: "#172033",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const selectedGoalsListStyle = {
+  display: "grid",
+  gap: "10px",
+};
+
+const selectedGoalCardStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+  padding: "14px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+  flexWrap: "wrap" as const,
+};
+
+const selectedGoalEvidenceStyle = {
+  margin: "6px 0 0",
+  color: "#94a3b8",
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.5,
+};
+
+const selectedGoalActionsStyle = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap" as const,
+};
+
+const noGoalsReasonStyle = {
+  padding: "16px",
+  marginTop: "14px",
+  color: "#fde68a",
+  backgroundColor:
+    "rgba(120, 53, 15, 0.3)",
+  border: "1px solid #a16207",
+  borderRadius: "10px",
+};
+
+const modalOverlayStyle = {
+  position: "fixed" as const,
+  inset: 0,
+  zIndex: 2000,
+  display: "grid",
+  placeItems: "center",
+  padding: "24px",
+  backgroundColor:
+    "rgba(2, 6, 23, 0.88)",
+};
+
+const learningGoalModalStyle = {
+  width: "100%",
+  maxWidth: "680px",
+  maxHeight: "90vh",
+  overflowY: "auto" as const,
+  boxSizing: "border-box" as const,
+  padding: "24px",
+  color: "white",
+  backgroundColor: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: "14px",
+};
+
+const modalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "18px",
+  marginBottom: "14px",
+};
+
+const modalCloseButtonStyle = {
+  padding: "0 8px",
+  color: "white",
+  backgroundColor: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "30px",
+  lineHeight: 1,
+};
+
+
+const ratingDefinitionsStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "10px",
+  padding: "14px",
+  margin: "18px 0",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const ratingDefinitionCardStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "10px",
+  padding: "10px",
+  backgroundColor: "#172033",
+  borderRadius: "8px",
+};
+
+const ratingDefinitionBadgeStyle = {
+  minWidth: "36px",
+  padding: "6px 8px",
+  color: "#bfdbfe",
+  textAlign: "center" as const,
+  backgroundColor:
+    "rgba(37, 99, 235, 0.18)",
+  border: "1px solid #2563eb",
+  borderRadius: "7px",
+  fontWeight: 900,
+};
+
+const ratingDefinitionTextStyle = {
+  margin: "5px 0 0",
+  color: "#94a3b8",
+  fontSize: "12px",
+  lineHeight: 1.45,
 };

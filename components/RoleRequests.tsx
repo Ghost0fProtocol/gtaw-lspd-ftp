@@ -19,6 +19,7 @@ import {
 
 type Props = {
   user: any;
+  embedded?: boolean;
 };
 
 type RequestStatus =
@@ -41,6 +42,9 @@ type OfficerProfile = {
 type FTOImportRequest = {
   id: string;
   profile_id: string;
+  request_type:
+    | "legacy_import"
+    | "new_fto";
   original_bbcode: string;
   parsed_data: Record<string, unknown> | null;
   status: RequestStatus;
@@ -54,6 +58,7 @@ type FTOImportRequest = {
 
 export default function RoleRequests({
   user,
+  embedded = false,
 }: Props) {
   const [
     requests,
@@ -100,7 +105,10 @@ export default function RoleRequests({
   ] = useState("");
 
   const parsedPreview =
-    selectedRequest
+    selectedRequest &&
+    selectedRequest.request_type !==
+      "new_fto" &&
+    selectedRequest.original_bbcode
       ? parseFTOFile(
           selectedRequest.original_bbcode
         )
@@ -357,6 +365,98 @@ export default function RoleRequests({
     return parsed;
   }
 
+  async function createApprovedNewFTOFile(
+    request: FTOImportRequest
+  ) {
+    const now =
+      new Date().toISOString();
+
+    const {
+      data: ftoFile,
+      error: ftoFileError,
+    } = await supabase
+      .from("fto_files")
+      .upsert(
+        {
+          profile_id:
+            request.profile_id,
+          division:
+            request.profile?.role ??
+            null,
+          induction_date:
+            now,
+          total_instruction_minutes:
+            0,
+          original_bbcode:
+            null,
+          probation_status:
+            "probationary",
+          probation_outcome:
+            null,
+          probation_started_at:
+            now,
+          probation_completed_at:
+            null,
+          archived_at:
+            null,
+          final_evaluation_status:
+            "locked",
+          final_evaluation_notes:
+            null,
+          final_evaluation_completed_at:
+            null,
+          final_evaluation_completed_by:
+            null,
+          updated_at:
+            now,
+        },
+        {
+          onConflict:
+            "profile_id",
+        }
+      )
+      .select("id")
+      .single();
+
+    if (ftoFileError) {
+      throw ftoFileError;
+    }
+
+    const {
+      error: patrolError,
+    } = await supabase
+      .from(
+        "fto_probation_patrols"
+      )
+      .upsert(
+        [1, 2, 3].map(
+          (patrolNumber) => ({
+            fto_file_id:
+              ftoFile.id,
+            patrol_number:
+              patrolNumber,
+            status:
+              "not_started",
+          })
+        ),
+        {
+          onConflict:
+            "fto_file_id,patrol_number",
+        }
+      );
+
+    if (patrolError) {
+      throw patrolError;
+    }
+
+    return {
+      ftoFileId:
+        ftoFile.id,
+      probationStatus:
+        "probationary",
+    };
+  }
+
   async function reviewRequest(
     outcome:
       | "approved"
@@ -419,7 +519,8 @@ export default function RoleRequests({
                 induction_date,
                 final_evaluation_date,
                 probationary_passed_date,
-                total_instruction_minutes
+                total_instruction_minutes,
+                probation_status
               `)
               .eq(
                 "profile_id",
@@ -435,8 +536,13 @@ export default function RoleRequests({
         throw existingFileResult.error;
       }
 
+      const isNewFTO =
+        selectedRequest.request_type ===
+        "new_fto";
+
       const parsed =
-        outcome === "approved"
+        outcome === "approved" &&
+        !isNewFTO
           ? parseFTOFile(
               selectedRequest.original_bbcode
             )
@@ -511,6 +617,16 @@ export default function RoleRequests({
           reviewed_by:
             user.id,
 
+          request_type:
+            selectedRequest.request_type,
+
+          resulting_probation_status:
+            outcome === "approved"
+              ? isNewFTO
+                ? "probationary"
+                : "qualified"
+              : null,
+
           imported_fto_file:
             parsed
               ? {
@@ -558,9 +674,43 @@ export default function RoleRequests({
           if (
             outcome === "approved"
           ) {
-            await importApprovedFTOFile(
-              selectedRequest
-            );
+            if (isNewFTO) {
+              await createApprovedNewFTOFile(
+                selectedRequest
+              );
+            } else {
+              await importApprovedFTOFile(
+                selectedRequest
+              );
+
+              const {
+                error:
+                  qualificationError,
+              } = await supabase
+                .from("fto_files")
+                .update({
+                  probation_status:
+                    "qualified",
+                  probation_outcome:
+                    "pass",
+                  final_evaluation_status:
+                    "completed",
+                  probation_completed_at:
+                    reviewedAt,
+                  updated_at:
+                    reviewedAt,
+                })
+                .eq(
+                  "profile_id",
+                  selectedRequest.profile_id
+                );
+
+              if (
+                qualificationError
+              ) {
+                throw qualificationError;
+              }
+            }
           }
 
           const {
@@ -639,7 +789,9 @@ export default function RoleRequests({
 
       setSuccess(
         outcome === "approved"
-          ? `${officerName} has been approved as a Field Training Officer and their FTO file has been imported.`
+          ? isNewFTO
+            ? `${officerName} has been approved as a probationary Field Training Officer. A blank FTO file and three patrol slots were created.`
+            : `${officerName} has been approved as a qualified Field Training Officer and their legacy FTO file has been imported.`
           : outcome === "rejected"
             ? `${officerName}'s FTO request has been rejected.`
             : `Changes have been requested from ${officerName}.`
@@ -688,32 +840,60 @@ export default function RoleRequests({
 
   return (
     <div>
-      <div style={headerStyle}>
-        <div>
-          <h2 style={titleStyle}>
-            FTO Role Requests
-          </h2>
+      {!embedded && (
+        <div style={headerStyle}>
+          <div>
+            <h2 style={titleStyle}>
+              FTO Role Requests
+            </h2>
 
-          <p style={subtitleStyle}>
-            Review existing FTO
-            files and approve,
-            reject or request
-            changes.
-          </p>
+            <p style={subtitleStyle}>
+              Review existing FTO
+              files and approve,
+              reject or request
+              changes.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadRequests()
+            }
+            style={
+              secondaryButtonStyle
+            }
+          >
+            Refresh
+          </button>
         </div>
+      )}
 
-        <button
-          type="button"
-          onClick={() =>
-            void loadRequests()
-          }
-          style={
-            secondaryButtonStyle
-          }
-        >
-          Refresh
-        </button>
-      </div>
+      {embedded && (
+        <div style={headerStyle}>
+          <div>
+            <h3 style={titleStyle}>
+              FTO Role Requests
+            </h3>
+
+            <p style={subtitleStyle}>
+              Review applications and imported FTO files.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadRequests()
+            }
+            style={
+              secondaryButtonStyle
+            }
+          >
+            Refresh
+          </button>
+        </div>
+      )}
 
       <div style={filterRowStyle}>
         {(
@@ -836,6 +1016,11 @@ export default function RoleRequests({
                       ?.badge_number ??
                       "N/A"}
                     {" • "}
+                    {request.request_type ===
+                    "new_fto"
+                      ? "New FTO"
+                      : "Legacy Import"}
+                    {" • "}
                     Submitted{" "}
                     {formatDateTime(
                       request.created_at
@@ -875,7 +1060,10 @@ export default function RoleRequests({
                       "0 0 6px",
                   }}
                 >
-                  FTO Role Request
+                  {selectedRequest.request_type ===
+                  "new_fto"
+                    ? "New FTO Application"
+                    : "FTO Import Request"}
                 </h2>
 
                 <p
@@ -958,6 +1146,16 @@ export default function RoleRequests({
                 value={formatDateTime(
                   selectedRequest.created_at
                 )}
+              />
+
+              <Detail
+                label="Application Type"
+                value={
+                  selectedRequest.request_type ===
+                  "new_fto"
+                    ? "New Probationary FTO"
+                    : "Existing Qualified FTO Import"
+                }
               />
             </div>
 
@@ -1086,20 +1284,37 @@ export default function RoleRequests({
               </div>
             )}
 
-            <label style={labelStyle}>
-              Submitted FTO File
-              BBCode
-            </label>
+            {selectedRequest.request_type ===
+              "legacy_import" && (
+              <>
+                <label style={labelStyle}>
+                  Submitted FTO File BBCode
+                </label>
 
-            <textarea
-              value={
-                selectedRequest.original_bbcode
-              }
-              readOnly
-              style={
-                bbcodeStyle
-              }
-            />
+                <textarea
+                  value={
+                    selectedRequest.original_bbcode
+                  }
+                  readOnly
+                  style={
+                    bbcodeStyle
+                  }
+                />
+              </>
+            )}
+
+            {selectedRequest.request_type ===
+              "new_fto" && (
+              <div style={newApplicationBoxStyle}>
+                <strong>
+                  New FTO application
+                </strong>
+
+                <p style={newApplicationTextStyle}>
+                  This applicant has no legacy FTO file. Approval will create a blank probationary FTO file with three patrol slots and a locked Final Evaluation.
+                </p>
+              </div>
+            )}
 
             <label style={labelStyle}>
               Reviewer Notes
@@ -1174,7 +1389,10 @@ export default function RoleRequests({
               >
                 {processing
                   ? "Processing..."
-                  : "Approve FTO"}
+                  : selectedRequest.request_type ===
+                      "new_fto"
+                    ? "Approve & Start Probation"
+                    : "Approve Qualified FTO"}
               </button>
             </div>
           </div>
@@ -1630,4 +1848,20 @@ const repairBoxStyle = {
     "rgba(20, 83, 45, 0.35)",
   border: "1px solid #166534",
   borderRadius: "8px",
+};
+
+const newApplicationBoxStyle = {
+  padding: "16px",
+  margin: "18px 0",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.22)",
+  border: "1px solid #2563eb",
+  borderRadius: "9px",
+};
+
+const newApplicationTextStyle = {
+  margin: "7px 0 0",
+  color: "#cbd5e1",
+  lineHeight: 1.55,
 };

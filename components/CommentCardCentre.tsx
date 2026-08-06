@@ -13,6 +13,7 @@ import {
 
 type Props = {
   user: any;
+  embedded?: boolean;
 };
 
 type CommentCard = {
@@ -43,6 +44,7 @@ type Tab =
 
 export default function CommentCardCentre({
   user,
+  embedded = false,
 }: Props) {
   const [
     activeTab,
@@ -332,31 +334,33 @@ export default function CommentCardCentre({
 
   return (
     <div style={pageStyle}>
-      <section style={heroStyle}>
-        <div>
-          <p style={eyebrowStyle}>
-            REVIEW & GOVERNANCE
-          </p>
+      {!embedded && (
+        <section style={heroStyle}>
+          <div>
+            <p style={eyebrowStyle}>
+              REVIEW & GOVERNANCE
+            </p>
 
-          <h2 style={heroTitleStyle}>
-            Comment Card Centre
-          </h2>
+            <h2 style={heroTitleStyle}>
+              Comment Card Centre
+            </h2>
 
-          <p style={heroTextStyle}>
-            Review guest submissions before they become part of the official probationary record.
-          </p>
-        </div>
+            <p style={heroTextStyle}>
+              Review guest submissions before they become part of the official probationary record.
+            </p>
+          </div>
 
-        <div style={accessStyle}>
-          <span>
-            CURRENT ACCESS
-          </span>
+          <div style={accessStyle}>
+            <span>
+              CURRENT ACCESS
+            </span>
 
-          <strong>
-            {user.role}
-          </strong>
-        </div>
-      </section>
+            <strong>
+              {user.role}
+            </strong>
+          </div>
+        </section>
+      )}
 
       {error && (
         <div style={errorStyle}>

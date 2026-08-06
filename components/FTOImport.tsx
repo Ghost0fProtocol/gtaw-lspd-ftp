@@ -13,6 +13,11 @@ type Props = {
   onSkip?: () => void;
 };
 
+type FTOEntryMode =
+  | ""
+  | "legacy"
+  | "new";
+
 type Profile = {
   id: string;
   name: string | null;
@@ -42,6 +47,13 @@ export default function FTOImport({
     bbcode,
     setBBCode,
   ] = useState("");
+
+  const [
+    entryMode,
+    setEntryMode,
+  ] = useState<FTOEntryMode>(
+    ""
+  );
 
   const [
     loading,
@@ -183,6 +195,13 @@ export default function FTOImport({
           requestData.original_bbcode ??
           ""
         );
+
+        setEntryMode(
+          requestData.request_type ===
+            "new_fto"
+            ? "new"
+            : "legacy"
+        );
       }
     } catch (loadError) {
       console.error(
@@ -218,7 +237,17 @@ export default function FTOImport({
       return;
     }
 
-    if (!bbcode.trim()) {
+    if (!entryMode) {
+      setError(
+        "Choose whether you are importing an existing FTO file or starting as a new FTO."
+      );
+      return;
+    }
+
+    if (
+      entryMode === "legacy" &&
+      !bbcode.trim()
+    ) {
       setError(
         "Please paste your current FTO file BBCode."
       );
@@ -239,8 +268,16 @@ export default function FTOImport({
           {
             profile_id:
               profileId,
+            request_type:
+              entryMode ===
+                "new"
+                ? "new_fto"
+                : "legacy_import",
             original_bbcode:
-              bbcode.trim(),
+              entryMode ===
+                "legacy"
+                ? bbcode.trim()
+                : "",
             parsed_data:
               {},
             status:
@@ -327,16 +364,11 @@ export default function FTOImport({
         </div>
 
         <h1 style={titleStyle}>
-          Import Your Existing FTO
-          File
+          Join the Field Training Program
         </h1>
 
         <p style={subTextStyle}>
-          Paste the full BBCode from
-          your current forum FTO file.
-          It will be stored for review
-          and later converted into the
-          portal.
+          Choose whether you are importing an existing qualified FTO file or starting as a new probationary FTO.
         </p>
 
         <div style={detailsStyle}>
@@ -374,6 +406,59 @@ export default function FTOImport({
           />
         </div>
 
+        <div style={modeGridStyle}>
+          <button
+            type="button"
+            onClick={() =>
+              setEntryMode(
+                "legacy"
+              )
+            }
+            disabled={submitting}
+            style={{
+              ...modeCardStyle,
+              ...(entryMode ===
+              "legacy"
+                ? selectedModeCardStyle
+                : {}),
+            }}
+          >
+            <strong>
+              Import Existing FTO File
+            </strong>
+
+            <span style={modeDescriptionStyle}>
+              For an already-qualified FTO with a legacy forum file. Approval creates a qualified FTO record.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEntryMode(
+                "new"
+              );
+              setBBCode("");
+            }}
+            disabled={submitting}
+            style={{
+              ...modeCardStyle,
+              ...(entryMode ===
+              "new"
+                ? selectedModeCardStyle
+                : {}),
+            }}
+          >
+            <strong>
+              Start as a New FTO
+            </strong>
+
+            <span style={modeDescriptionStyle}>
+              No legacy BBCode required. Approval creates a blank FTO file and starts the three-patrol probation process.
+            </span>
+          </button>
+        </div>
+
         {isPending && (
           <div style={pendingStyle}>
             Your FTO request is already
@@ -383,32 +468,46 @@ export default function FTOImport({
           </div>
         )}
 
-        <label style={labelStyle}>
-          Existing FTO File BBCode
-        </label>
+        {entryMode ===
+          "legacy" && (
+          <>
+            <label style={labelStyle}>
+              Existing FTO File BBCode
+            </label>
 
-        <textarea
-          value={bbcode}
-          onChange={(event) =>
-            setBBCode(
-              event.target.value
-            )
-          }
-          placeholder="[font=Arial]Paste your complete FTO file BBCode here...[/font]"
-          disabled={
-            submitting ||
-            !profile
-          }
-          style={textareaStyle}
-        />
+            <textarea
+              value={bbcode}
+              onChange={(event) =>
+                setBBCode(
+                  event.target.value
+                )
+              }
+              placeholder="[font=Arial]Paste your complete FTO file BBCode here...[/font]"
+              disabled={
+                submitting ||
+                !profile
+              }
+              style={textareaStyle}
+            />
 
-        <p style={helpTextStyle}>
-          Paste the complete file,
-          including all BBCode tags.
-          The original text will be
-          preserved exactly as
-          submitted.
-        </p>
+            <p style={helpTextStyle}>
+              Paste the complete file, including all BBCode tags. The original text will be preserved exactly as submitted.
+            </p>
+          </>
+        )}
+
+        {entryMode ===
+          "new" && (
+          <div style={newFTOInfoStyle}>
+            <strong>
+              New FTO probation
+            </strong>
+
+            <p style={newFTOInfoTextStyle}>
+              Your application will be reviewed without a legacy file. Once approved, a blank FTO file will be created and you will begin FTO probation with three patrols and a Final Evaluation.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div style={errorStyle}>
@@ -455,7 +554,10 @@ export default function FTOImport({
               ? "Submitting Request..."
               : isPending
                 ? "Update FTO Request"
-                : "Submit FTO Request"}
+                : entryMode ===
+                    "new"
+                  ? "Submit New FTO Application"
+                  : "Submit FTO Import Request"}
           </button>
         </div>
       </div>
@@ -669,4 +771,53 @@ const buttonStyle = {
   borderRadius: "8px",
   fontSize: "16px",
   fontWeight: 800,
+};
+
+const modeGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: "12px",
+  marginBottom: "22px",
+};
+
+const modeCardStyle = {
+  display: "grid",
+  gap: "8px",
+  padding: "18px",
+  color: "#cbd5e1",
+  textAlign: "left" as const,
+  backgroundColor: "#0f172a",
+  border: "1px solid #475569",
+  borderRadius: "10px",
+  cursor: "pointer",
+};
+
+const selectedModeCardStyle = {
+  color: "white",
+  border: "1px solid #3b82f6",
+  boxShadow:
+    "inset 3px 0 0 #3b82f6",
+};
+
+const modeDescriptionStyle = {
+  color: "#94a3b8",
+  fontSize: "13px",
+  lineHeight: 1.5,
+};
+
+const newFTOInfoStyle = {
+  padding: "16px",
+  marginBottom: "18px",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.22)",
+  border: "1px solid #2563eb",
+  borderRadius: "9px",
+};
+
+const newFTOInfoTextStyle = {
+  margin: "7px 0 0",
+  color: "#cbd5e1",
+  lineHeight: 1.55,
 };

@@ -25,14 +25,13 @@ import Records from "../components/Records";
 import DORForm from "../components/DORForm";
 import Settings from "../components/Settings";
 import MyNotebook from "../components/MyNotebook";
-import RoleRequests from "../components/RoleRequests";
 import MyFTOFile from "../components/MyFTOFile";
 import FTORecords from "../components/FTORecords";
 import PersonnelManagement from "../components/PersonnelManagement";
 import FieldTrainingManagementDashboard from "../components/FieldTrainingManagementDashboard";
 import BatchManagement from "../components/BatchManagement";
 import AuditLog from "../components/AuditLog";
-import CommentCardCentre from "../components/CommentCardCentre";
+import ReviewCentre from "../components/ReviewCentre";
 
 type InitialRole =
   | "Probationary Officer"
@@ -689,7 +688,7 @@ export default function Home() {
 
       case "Role Requests":
         return (
-          <RoleRequests
+          <ReviewCentre
             user={user}
           />
         );
@@ -746,9 +745,16 @@ export default function Home() {
           />
         );
 
+      case "Review Centre":
+        return (
+          <ReviewCentre
+            user={user}
+          />
+        );
+
       case "Comment Card Centre":
         return (
-          <CommentCardCentre
+          <ReviewCentre
             user={user}
           />
         );

@@ -13,6 +13,38 @@ type Props = {
   user: any;
 };
 
+type FTORecordsTab =
+  | "probationary"
+  | "qualified"
+  | "archived";
+
+type FTOProbationStatus =
+  | "probationary"
+  | "qualified"
+  | "archived";
+
+type FTOProbationOutcome =
+  | "pass"
+  | "extend"
+  | "fail"
+  | null;
+
+type PatrolStatus =
+  | "not_started"
+  | "submitted"
+  | "reviewed";
+
+type FTOProbationPatrol = {
+  id: string;
+  fto_file_id: string;
+  patrol_number: number;
+  status: PatrolStatus;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_notes: string | null;
+};
+
 type FTORecord = {
   fileId: string;
   profileId: string;
@@ -24,6 +56,29 @@ type FTORecord = {
   totalInstructionMinutes: number;
   entryCount: number;
   updatedAt: string | null;
+
+  probationStatus: FTOProbationStatus;
+  probationOutcome: FTOProbationOutcome;
+  probationStartedAt: string | null;
+  probationCompletedAt: string | null;
+  archivedAt: string | null;
+
+  probationStatusChangedAt:
+    | string
+    | null;
+  probationStatusChangedBy:
+    | string
+    | null;
+  probationOverrideReason:
+    | string
+    | null;
+
+  finalEvaluationStatus: string;
+  finalEvaluationNotes: string | null;
+  finalEvaluationCompletedAt: string | null;
+  finalEvaluationCompletedBy: string | null;
+
+  patrols: FTOProbationPatrol[];
 };
 
 const permittedRoles = [
@@ -50,6 +105,13 @@ export default function FTORecords({
   );
 
   const [
+    activeTab,
+    setActiveTab,
+  ] = useState<FTORecordsTab>(
+    "probationary"
+  );
+
+  const [
     searchTerm,
     setSearchTerm,
   ] = useState("");
@@ -60,8 +122,18 @@ export default function FTORecords({
   ] = useState(true);
 
   const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
     error,
     setError,
+  ] = useState("");
+
+  const [
+    successMessage,
+    setSuccessMessage,
   ] = useState("");
 
   const canViewAllFiles =
@@ -95,7 +167,19 @@ export default function FTORecords({
           profile_id,
           division,
           total_instruction_minutes,
-          updated_at
+          updated_at,
+          probation_status,
+          probation_outcome,
+          probation_started_at,
+          probation_completed_at,
+          archived_at,
+          probation_status_changed_at,
+          probation_status_changed_by,
+          probation_override_reason,
+          final_evaluation_status,
+          final_evaluation_notes,
+          final_evaluation_completed_at,
+          final_evaluation_completed_by
         `)
         .order(
           "updated_at",
@@ -138,6 +222,7 @@ export default function FTORecords({
       const [
         profileResult,
         entryResult,
+        patrolResult,
       ] = await Promise.all([
         supabase
           .from("profiles")
@@ -165,6 +250,31 @@ export default function FTORecords({
             "fto_file_id",
             fileIds
           ),
+
+        supabase
+          .from(
+            "fto_probation_patrols"
+          )
+          .select(`
+            id,
+            fto_file_id,
+            patrol_number,
+            status,
+            submitted_at,
+            reviewed_at,
+            reviewed_by,
+            review_notes
+          `)
+          .in(
+            "fto_file_id",
+            fileIds
+          )
+          .order(
+            "patrol_number",
+            {
+              ascending: true,
+            }
+          ),
       ]);
 
       if (
@@ -177,6 +287,12 @@ export default function FTORecords({
         entryResult.error
       ) {
         throw entryResult.error;
+      }
+
+      if (
+        patrolResult.error
+      ) {
+        throw patrolResult.error;
       }
 
       const profiles =
@@ -206,6 +322,39 @@ export default function FTORecords({
           {} as Record<
             string,
             number
+          >
+        );
+
+      const patrolsByFile =
+        (
+          patrolResult.data ??
+          []
+        ).reduce(
+          (
+            grouped,
+            patrol
+          ) => {
+            if (
+              !grouped[
+                patrol.fto_file_id
+              ]
+            ) {
+              grouped[
+                patrol.fto_file_id
+              ] = [];
+            }
+
+            grouped[
+              patrol.fto_file_id
+            ].push(
+              patrol as FTOProbationPatrol
+            );
+
+            return grouped;
+          },
+          {} as Record<
+            string,
+            FTOProbationPatrol[]
           >
         );
 
@@ -261,6 +410,61 @@ export default function FTORecords({
               updatedAt:
                 file.updated_at ??
                 null,
+
+              probationStatus:
+                normaliseProbationStatus(
+                  file.probation_status
+                ),
+
+              probationOutcome:
+                normaliseProbationOutcome(
+                  file.probation_outcome
+                ),
+
+              probationStartedAt:
+                file.probation_started_at ??
+                null,
+
+              probationCompletedAt:
+                file.probation_completed_at ??
+                null,
+
+              archivedAt:
+                file.archived_at ??
+                null,
+
+              probationStatusChangedAt:
+                file.probation_status_changed_at ??
+                null,
+
+              probationStatusChangedBy:
+                file.probation_status_changed_by ??
+                null,
+
+              probationOverrideReason:
+                file.probation_override_reason ??
+                null,
+
+              finalEvaluationStatus:
+                file.final_evaluation_status ??
+                "locked",
+
+              finalEvaluationNotes:
+                file.final_evaluation_notes ??
+                null,
+
+              finalEvaluationCompletedAt:
+                file.final_evaluation_completed_at ??
+                null,
+
+              finalEvaluationCompletedBy:
+                file.final_evaluation_completed_by ??
+                null,
+
+              patrols:
+                patrolsByFile[
+                  file.id
+                ] ?? [],
             };
           }
         );
@@ -294,6 +498,444 @@ export default function FTORecords({
     }
   }
 
+  async function updatePatrolStatus(
+    patrol: FTOProbationPatrol,
+    status: PatrolStatus
+  ) {
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const now =
+        new Date().toISOString();
+
+      const updateData: Record<
+        string,
+        unknown
+      > = {
+        status,
+      };
+
+      if (
+        status ===
+        "submitted"
+      ) {
+        updateData.submitted_at =
+          patrol.submitted_at ??
+          now;
+
+        updateData.reviewed_at =
+          null;
+
+        updateData.reviewed_by =
+          null;
+      }
+
+      if (
+        status ===
+        "reviewed"
+      ) {
+        updateData.submitted_at =
+          patrol.submitted_at ??
+          now;
+
+        updateData.reviewed_at =
+          now;
+
+        updateData.reviewed_by =
+          user.id;
+      }
+
+      if (
+        status ===
+        "not_started"
+      ) {
+        updateData.submitted_at =
+          null;
+
+        updateData.reviewed_at =
+          null;
+
+        updateData.reviewed_by =
+          null;
+
+        updateData.review_notes =
+          null;
+      }
+
+      const {
+        error:
+          updateError,
+      } = await supabase
+        .from(
+          "fto_probation_patrols"
+        )
+        .update(
+          updateData
+        )
+        .eq(
+          "id",
+          patrol.id
+        );
+
+      if (
+        updateError
+      ) {
+        throw updateError;
+      }
+
+      setSuccessMessage(
+        `Patrol ${patrol.patrol_number} updated to ${formatPatrolStatus(
+          status
+        )}.`
+      );
+
+      await loadRecords();
+    } catch (updateError) {
+      console.error(
+        "UPDATE FTO PROBATION PATROL ERROR",
+        updateError
+      );
+
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "The patrol status could not be updated."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function completeFinalEvaluation(
+    record: FTORecord,
+    outcome:
+      | "pass"
+      | "extend"
+      | "fail"
+  ) {
+    const reviewedPatrols =
+      record.patrols.filter(
+        (patrol) =>
+          patrol.status ===
+          "reviewed"
+      ).length;
+
+    if (
+      reviewedPatrols < 3
+    ) {
+      setError(
+        "All three probation patrols must be reviewed before the Final Evaluation can be completed."
+      );
+
+      return;
+    }
+
+    const notes =
+      window.prompt(
+        `Enter Final Evaluation notes for ${record.name}:`,
+        record.finalEvaluationNotes ??
+          ""
+      );
+
+    if (
+      notes === null
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const now =
+        new Date().toISOString();
+
+      const nextStatus:
+        FTOProbationStatus =
+        outcome === "pass"
+          ? "qualified"
+          : outcome === "fail"
+            ? "archived"
+            : "probationary";
+
+      const {
+        error:
+          updateError,
+      } = await supabase
+        .from("fto_files")
+        .update({
+          probation_status:
+            nextStatus,
+
+          probation_outcome:
+            outcome,
+
+          final_evaluation_status:
+            outcome ===
+            "extend"
+              ? "extended"
+              : "completed",
+
+          final_evaluation_notes:
+            notes.trim() ||
+            null,
+
+          final_evaluation_completed_at:
+            now,
+
+          final_evaluation_completed_by:
+            user.id,
+
+          probation_completed_at:
+            outcome ===
+            "pass"
+              ? now
+              : null,
+
+          archived_at:
+            outcome ===
+            "fail"
+              ? now
+              : null,
+
+          updated_at:
+            now,
+        })
+        .eq(
+          "id",
+          record.fileId
+        );
+
+      if (
+        updateError
+      ) {
+        throw updateError;
+      }
+
+      setSuccessMessage(
+        outcome === "pass"
+          ? `${record.name} passed FTO probation and is now a qualified FTO.`
+          : outcome === "fail"
+            ? `${record.name} failed FTO probation and the file was archived.`
+            : `${record.name}'s FTO probation was extended.`
+      );
+
+      await loadRecords();
+    } catch (evaluationError) {
+      console.error(
+        "COMPLETE FTO FINAL EVALUATION ERROR",
+        evaluationError
+      );
+
+      setError(
+        evaluationError instanceof Error
+          ? evaluationError.message
+          : "The Final Evaluation could not be completed."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function manuallySetProbation(
+    record: FTORecord,
+    placeOnProbation: boolean
+  ) {
+    const reason =
+      window.prompt(
+        placeOnProbation
+          ? `Why is ${record.name} being placed on FTO probation?`
+          : `Why is ${record.name} being removed from FTO probation?`
+      );
+
+    if (
+      reason === null
+    ) {
+      return;
+    }
+
+    if (!reason.trim()) {
+      setError(
+        "A reason is required for a manual probation status change."
+      );
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        placeOnProbation
+          ? `Place ${record.name} on FTO probation and reset Patrols 1–3?`
+          : `Remove ${record.name} from FTO probation and mark them qualified?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const now =
+        new Date().toISOString();
+
+      const {
+        error:
+          fileUpdateError,
+      } = await supabase
+        .from("fto_files")
+        .update({
+          probation_status:
+            placeOnProbation
+              ? "probationary"
+              : "qualified",
+          probation_outcome:
+            placeOnProbation
+              ? null
+              : "pass",
+          probation_started_at:
+            placeOnProbation
+              ? now
+              : record.probationStartedAt,
+          probation_completed_at:
+            placeOnProbation
+              ? null
+              : now,
+          archived_at:
+            null,
+          final_evaluation_status:
+            placeOnProbation
+              ? "locked"
+              : "completed",
+          final_evaluation_notes:
+            placeOnProbation
+              ? null
+              : `Management override: ${reason.trim()}`,
+          final_evaluation_completed_at:
+            placeOnProbation
+              ? null
+              : now,
+          final_evaluation_completed_by:
+            placeOnProbation
+              ? null
+              : user.id,
+          probation_status_changed_at:
+            now,
+          probation_status_changed_by:
+            user.id,
+          probation_override_reason:
+            reason.trim(),
+          updated_at:
+            now,
+        })
+        .eq(
+          "id",
+          record.fileId
+        );
+
+      if (
+        fileUpdateError
+      ) {
+        throw fileUpdateError;
+      }
+
+      if (placeOnProbation) {
+        const {
+          error:
+            deleteError,
+        } = await supabase
+          .from(
+            "fto_probation_patrols"
+          )
+          .delete()
+          .eq(
+            "fto_file_id",
+            record.fileId
+          );
+
+        if (deleteError) {
+          throw deleteError;
+        }
+
+        const {
+          error:
+            insertError,
+        } = await supabase
+          .from(
+            "fto_probation_patrols"
+          )
+          .insert(
+            [1, 2, 3].map(
+              (patrolNumber) => ({
+                fto_file_id:
+                  record.fileId,
+                patrol_number:
+                  patrolNumber,
+                status:
+                  "not_started",
+              })
+            )
+          );
+
+        if (insertError) {
+          throw insertError;
+        }
+      }
+
+      setSuccessMessage(
+        placeOnProbation
+          ? `${record.name} was placed on FTO probation. Patrols 1–3 were reset.`
+          : `${record.name} was removed from FTO probation and marked qualified.`
+      );
+
+      await loadRecords();
+    } catch (overrideError) {
+      console.error(
+        "MANUAL FTO PROBATION UPDATE ERROR",
+        overrideError
+      );
+
+      setError(
+        overrideError instanceof Error
+          ? overrideError.message
+          : "The FTO probation status could not be changed."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const tabCounts =
+    useMemo(
+      () => ({
+        probationary:
+          records.filter(
+            (record) =>
+              record.probationStatus ===
+              "probationary"
+          ).length,
+
+        qualified:
+          records.filter(
+            (record) =>
+              record.probationStatus ===
+              "qualified"
+          ).length,
+
+        archived:
+          records.filter(
+            (record) =>
+              record.probationStatus ===
+              "archived"
+          ).length,
+      }),
+      [records]
+    );
+
   const filteredRecords =
     useMemo(() => {
       const query =
@@ -301,32 +943,49 @@ export default function FTORecords({
           .trim()
           .toLowerCase();
 
-      if (!query) {
-        return records;
-      }
+      return records
+        .filter(
+          (record) =>
+            record.probationStatus ===
+            activeTab
+        )
+        .filter(
+          (record) => {
+            if (!query) {
+              return true;
+            }
 
-      return records.filter(
-        (record) => {
-          const searchable =
-            [
-              record.name,
-              record.rank,
-              record.badgeNumber,
-              record.workNumber,
-              record.division,
-            ]
-              .join(" ")
-              .toLowerCase();
+            const searchable =
+              [
+                record.name,
+                record.rank,
+                record.badgeNumber,
+                record.workNumber,
+                record.division,
+                record.probationOutcome,
+              ]
+                .join(" ")
+                .toLowerCase();
 
-          return searchable.includes(
-            query
-          );
-        }
-      );
+            return searchable.includes(
+              query
+            );
+          }
+        );
     }, [
       records,
       searchTerm,
+      activeTab,
     ]);
+
+  const selectedRecord =
+    selectedProfileId
+      ? records.find(
+          (record) =>
+            record.profileId ===
+            selectedProfileId
+        ) ?? null
+      : null;
 
   if (!canViewAllFiles) {
     return (
@@ -336,20 +995,38 @@ export default function FTORecords({
     );
   }
 
-  if (selectedProfileId) {
+  if (
+    selectedProfileId &&
+    selectedRecord
+  ) {
     return (
       <div>
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
             setSelectedProfileId(
               null
-            )
-          }
+            );
+
+            setError("");
+            setSuccessMessage("");
+          }}
           style={backButtonStyle}
         >
           ← Back to FTO Records
         </button>
+
+        {error && (
+          <div style={errorStyle}>
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div style={successStyle}>
+            {successMessage}
+          </div>
+        )}
 
         <MyFTOFile
           user={user}
@@ -374,7 +1051,7 @@ export default function FTORecords({
           </h2>
 
           <p style={subtitleStyle}>
-            View every Field Training Officer file and their complete activity history.
+            Review probationary, qualified and archived Field Training Officer files.
           </p>
         </div>
 
@@ -404,26 +1081,81 @@ export default function FTORecords({
         </div>
       )}
 
+      {successMessage && (
+        <div style={successStyle}>
+          {successMessage}
+        </div>
+      )}
+
+      <div style={tabsStyle}>
+        <TabButton
+          label="Probationary FTOs"
+          count={
+            tabCounts.probationary
+          }
+          active={
+            activeTab ===
+            "probationary"
+          }
+          onClick={() =>
+            setActiveTab(
+              "probationary"
+            )
+          }
+        />
+
+        <TabButton
+          label="Qualified FTOs"
+          count={
+            tabCounts.qualified
+          }
+          active={
+            activeTab ===
+            "qualified"
+          }
+          onClick={() =>
+            setActiveTab(
+              "qualified"
+            )
+          }
+        />
+
+        <TabButton
+          label="Archived FTOs"
+          count={
+            tabCounts.archived
+          }
+          active={
+            activeTab ===
+            "archived"
+          }
+          onClick={() =>
+            setActiveTab(
+              "archived"
+            )
+          }
+        />
+      </div>
+
       <div style={summaryGridStyle}>
         <SummaryCard
-          label="FTO Files"
+          label="Probationary"
           value={String(
-            records.length
+            tabCounts.probationary
           )}
         />
 
         <SummaryCard
-          label="Total Entries"
+          label="Qualified"
           value={String(
-            records.reduce(
-              (
-                total,
-                record
-              ) =>
-                total +
-                record.entryCount,
-              0
-            )
+            tabCounts.qualified
+          )}
+        />
+
+        <SummaryCard
+          label="Archived"
+          value={String(
+            tabCounts.archived
           )}
         />
 
@@ -461,11 +1193,11 @@ export default function FTORecords({
           </strong>
 
           <strong>
-            Division
+            Status
           </strong>
 
           <strong>
-            Instruction
+            Probation Progress
           </strong>
 
           <strong>
@@ -486,67 +1218,185 @@ export default function FTORecords({
           </div>
         ) : (
           filteredRecords.map(
-            (record) => (
-              <button
-                key={
-                  record.fileId
-                }
-                type="button"
-                onClick={() =>
-                  setSelectedProfileId(
-                    record.profileId
-                  )
-                }
-                style={recordRowStyle}
-              >
-                <div>
+            (record) => {
+              const reviewed =
+                record.patrols.filter(
+                  (patrol) =>
+                    patrol.status ===
+                    "reviewed"
+                ).length;
+
+              return (
+                <button
+                  key={
+                    record.fileId
+                  }
+                  type="button"
+                  onClick={() =>
+                    setSelectedProfileId(
+                      record.profileId
+                    )
+                  }
+                  style={recordRowStyle}
+                >
+                  <div>
+                    <strong>
+                      {record.name}
+                    </strong>
+
+                    <p style={metaStyle}>
+                      {record.rank}
+                      {" • "}
+                      Badge{" "}
+                      {record.badgeNumber}
+                      {" • "}
+                      {record.division}
+                    </p>
+                  </div>
+
+                  <div>
+                    <StatusBadge
+                      status={
+                        record.probationStatus
+                      }
+                    />
+
+                    <p style={metaStyle}>
+                      {record.probationOutcome
+                        ? `Outcome: ${formatOutcome(
+                            record.probationOutcome
+                          )}`
+                        : "No final outcome"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong>
+                      {record.probationStatus ===
+                      "probationary"
+                        ? `${reviewed}/3 patrols reviewed`
+                        : record.probationStatus ===
+                            "qualified"
+                          ? "Probation completed"
+                          : "File archived"}
+                    </strong>
+
+                    <div style={progressTrackStyle}>
+                      <div
+                        style={{
+                          ...progressFillStyle,
+                          width:
+                            record.probationStatus ===
+                            "qualified"
+                              ? "100%"
+                              : `${Math.min(
+                                  100,
+                                  (
+                                    reviewed /
+                                    3
+                                  ) *
+                                    100
+                                )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
                   <strong>
-                    {record.name}
+                    {record.entryCount}
                   </strong>
 
-                  <p style={metaStyle}>
-                    {record.rank}
-                    {" • "}
-                    Badge{" "}
-                    {record.badgeNumber}
-                    {" • "}
-                    Work{" "}
-                    {record.workNumber}
-                  </p>
-                </div>
-
-                <div>
-                  <strong>
-                    {record.division}
-                  </strong>
-
-                  <p style={metaStyle}>
-                    Updated{" "}
-                    {formatUpdatedAt(
-                      record.updatedAt
-                    )}
-                  </p>
-                </div>
-
-                <strong>
-                  {formatMinutes(
-                    record.totalInstructionMinutes
-                  )}
-                </strong>
-
-                <strong>
-                  {record.entryCount}
-                </strong>
-
-                <span style={openLinkStyle}>
-                  Open File
-                </span>
-              </button>
-            )
+                  <span style={openLinkStyle}>
+                    Open File
+                  </span>
+                </button>
+              );
+            }
           )
         )}
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...tabButtonStyle,
+        ...(active
+          ? activeTabButtonStyle
+          : {}),
+      }}
+    >
+      {label}
+
+      <span style={tabCountStyle}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function StatusBadge({
+  status,
+}: {
+  status: FTOProbationStatus;
+}) {
+  const style =
+    status ===
+    "probationary"
+      ? probationaryBadgeStyle
+      : status ===
+          "qualified"
+        ? qualifiedBadgeStyle
+        : archivedBadgeStyle;
+
+  return (
+    <span style={style}>
+      {status ===
+      "probationary"
+        ? "PROBATIONARY"
+        : status ===
+            "qualified"
+          ? "QUALIFIED"
+          : "ARCHIVED"}
+    </span>
+  );
+}
+
+function PatrolStatusBadge({
+  status,
+}: {
+  status: PatrolStatus;
+}) {
+  const style =
+    status ===
+    "reviewed"
+      ? reviewedPatrolBadgeStyle
+      : status ===
+          "submitted"
+        ? submittedPatrolBadgeStyle
+        : notStartedPatrolBadgeStyle;
+
+  return (
+    <span style={style}>
+      {formatPatrolStatus(
+        status
+      )}
+    </span>
   );
 }
 
@@ -568,6 +1418,67 @@ function SummaryCard({
       </p>
     </div>
   );
+}
+
+function normaliseProbationStatus(
+  value: unknown
+): FTOProbationStatus {
+  if (
+    value ===
+      "probationary" ||
+    value ===
+      "archived"
+  ) {
+    return value;
+  }
+
+  return "qualified";
+}
+
+function normaliseProbationOutcome(
+  value: unknown
+): FTOProbationOutcome {
+  if (
+    value === "pass" ||
+    value === "extend" ||
+    value === "fail"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+function formatPatrolStatus(
+  status: PatrolStatus
+) {
+  if (
+    status ===
+    "not_started"
+  ) {
+    return "Not Started";
+  }
+
+  if (
+    status ===
+    "submitted"
+  ) {
+    return "Submitted";
+  }
+
+  return "Reviewed";
+}
+
+function formatOutcome(
+  outcome:
+    | "pass"
+    | "extend"
+    | "fail"
+) {
+  return outcome
+    .charAt(0)
+    .toUpperCase() +
+    outcome.slice(1);
 }
 
 function formatMinutes(
@@ -598,24 +1509,212 @@ function formatMinutes(
   )}`;
 }
 
-function formatUpdatedAt(
+function formatDateTime(
   value: string | null
 ) {
   if (!value) {
-    return "unknown";
+    return "date unknown";
   }
 
   return new Date(
     value
-  ).toLocaleDateString(
+  ).toLocaleString(
     "en-GB",
     {
       day: "2-digit",
       month: "short",
       year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }
   );
 }
+
+const tabsStyle = {
+  display: "flex",
+  gap: "10px",
+  marginBottom: "18px",
+  flexWrap: "wrap" as const,
+};
+
+const tabButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
+  padding: "10px 14px",
+  color: "#cbd5e1",
+  backgroundColor: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const activeTabButtonStyle = {
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "1px solid #3b82f6",
+};
+
+const tabCountStyle = {
+  minWidth: "24px",
+  padding: "3px 7px",
+  textAlign: "center" as const,
+  backgroundColor:
+    "rgba(15, 23, 42, 0.55)",
+  borderRadius: "999px",
+  fontSize: "12px",
+};
+
+const probationPanelStyle = {
+  padding: "22px",
+  marginBottom: "22px",
+  backgroundColor: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: "12px",
+};
+
+const probationHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+  flexWrap: "wrap" as const,
+};
+
+const probationTitleStyle = {
+  margin: "0 0 6px",
+};
+
+const patrolGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "12px",
+  marginTop: "18px",
+};
+
+const patrolCardStyle = {
+  padding: "15px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+};
+
+const patrolHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "10px",
+};
+
+const patrolActionsStyle = {
+  display: "flex",
+  gap: "8px",
+  marginTop: "14px",
+  flexWrap: "wrap" as const,
+};
+
+const submitPatrolButtonStyle = {
+  padding: "9px 11px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const reviewPatrolButtonStyle = {
+  padding: "9px 11px",
+  color: "white",
+  backgroundColor: "#16a34a",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const resetPatrolButtonStyle = {
+  padding: "9px 11px",
+  color: "#fecaca",
+  backgroundColor:
+    "rgba(127, 29, 29, 0.35)",
+  border: "1px solid #991b1b",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const finalEvaluationCardStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "18px",
+  padding: "18px",
+  marginTop: "16px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+  flexWrap: "wrap" as const,
+};
+
+const finalEvaluationTitleStyle = {
+  margin: "0 0 6px",
+};
+
+const finalOutcomeButtonsStyle = {
+  display: "flex",
+  gap: "9px",
+  flexWrap: "wrap" as const,
+};
+
+const passButtonStyle = {
+  padding: "10px 14px",
+  color: "white",
+  backgroundColor: "#16a34a",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const extendButtonStyle = {
+  padding: "10px 14px",
+  color: "white",
+  backgroundColor: "#d97706",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const failButtonStyle = {
+  padding: "10px 14px",
+  color: "white",
+  backgroundColor: "#dc2626",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const completedProbationStyle = {
+  display: "grid",
+  gap: "8px",
+  padding: "16px",
+  marginTop: "18px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "9px",
+};
+
+const completedProbationTextStyle = {
+  margin: 0,
+  color: "#cbd5e1",
+  whiteSpace: "pre-wrap" as const,
+  lineHeight: 1.55,
+};
 
 const headerStyle = {
   display: "flex",
@@ -716,7 +1815,7 @@ const recordsCardStyle = {
 const tableHeaderStyle = {
   display: "grid",
   gridTemplateColumns:
-    "2fr 1.3fr 0.8fr 0.6fr 0.7fr",
+    "2fr 1fr 1.3fr 0.6fr 0.7fr",
   gap: "16px",
   padding: "14px 18px",
   color: "#94a3b8",
@@ -731,7 +1830,7 @@ const recordRowStyle = {
   width: "100%",
   display: "grid",
   gridTemplateColumns:
-    "2fr 1.3fr 0.8fr 0.6fr 0.7fr",
+    "2fr 1fr 1.3fr 0.6fr 0.7fr",
   alignItems: "center",
   gap: "16px",
   padding: "18px",
@@ -757,6 +1856,69 @@ const openLinkStyle = {
   textAlign: "right" as const,
 };
 
+const progressTrackStyle = {
+  width: "100%",
+  maxWidth: "180px",
+  height: "6px",
+  marginTop: "8px",
+  overflow: "hidden",
+  backgroundColor: "#334155",
+  borderRadius: "999px",
+};
+
+const progressFillStyle = {
+  height: "100%",
+  backgroundColor: "#3b82f6",
+  borderRadius: "999px",
+};
+
+const probationaryBadgeStyle = {
+  display: "inline-block",
+  padding: "5px 9px",
+  color: "#fde68a",
+  backgroundColor:
+    "rgba(120, 53, 15, 0.3)",
+  border: "1px solid #a16207",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 900,
+};
+
+const qualifiedBadgeStyle = {
+  display: "inline-block",
+  padding: "5px 9px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 900,
+};
+
+const archivedBadgeStyle = {
+  display: "inline-block",
+  padding: "5px 9px",
+  color: "#cbd5e1",
+  backgroundColor: "#334155",
+  border: "1px solid #475569",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 900,
+};
+
+const notStartedPatrolBadgeStyle = {
+  ...archivedBadgeStyle,
+};
+
+const submittedPatrolBadgeStyle = {
+  ...probationaryBadgeStyle,
+};
+
+const reviewedPatrolBadgeStyle = {
+  ...qualifiedBadgeStyle,
+};
+
 const emptyStyle = {
   padding: "20px",
   color: "#94a3b8",
@@ -770,4 +1932,55 @@ const errorStyle = {
     "rgba(127, 29, 29, 0.35)",
   border: "1px solid #991b1b",
   borderRadius: "8px",
+};
+
+const successStyle = {
+  padding: "14px",
+  marginBottom: "18px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "8px",
+};
+
+
+const managementOverrideStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "16px",
+  padding: "14px",
+  marginTop: "16px",
+  backgroundColor: "#172033",
+  border: "1px solid #475569",
+  borderRadius: "9px",
+  flexWrap: "wrap" as const,
+};
+
+const managementOverrideTextStyle = {
+  margin: "6px 0 0",
+  color: "#94a3b8",
+  fontSize: "13px",
+  lineHeight: 1.5,
+};
+
+const placeProbationButtonStyle = {
+  padding: "10px 14px",
+  color: "white",
+  backgroundColor: "#d97706",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const removeProbationButtonStyle = {
+  padding: "10px 14px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "none",
+  borderRadius: "7px",
+  cursor: "pointer",
+  fontWeight: 900,
 };
