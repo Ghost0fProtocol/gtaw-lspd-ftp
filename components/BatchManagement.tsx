@@ -16,7 +16,7 @@ type Props = {
 };
 
 type BatchStatus = "Upcoming" | "Active" | "Completed" | "Archived";
-type WorkspaceTab = "overview" | "probationers" | "calendar" | "settings";
+type WorkspaceTab = "overview" | "probationers" | "calendar" | "summary" | "settings";
 
 type Batch = {
   id: string;
@@ -94,6 +94,78 @@ type SuitabilityResult = {
   ftmAvailabilityMinutes: number;
 };
 
+type BatchDOR = {
+  id: string;
+  trainee_id: string;
+  fto_id: string;
+  duration: string | null;
+  patrol_date: string | null;
+  submitted_at: string | null;
+  status: string;
+};
+
+type BatchSummaryStatus =
+  | "draft"
+  | "published"
+  | "revised";
+
+type ContributionSnapshot = {
+  profileId: string;
+  name: string;
+  rank: string;
+  badgeNumber: string;
+  patrols: number;
+  minutes: number;
+  exempt: boolean;
+  note: string;
+};
+
+type BatchSummary = {
+  id: string;
+  batch_id: string;
+  title: string;
+  status: BatchSummaryStatus;
+  quota_required: number;
+  total_recruits: number;
+  total_reinstatements: number;
+  total_promotions: number;
+  total_resignations: number;
+  total_terminations: number;
+  total_patrols: number;
+  total_instruction_minutes: number;
+  officers_below_quota: number;
+  zero_patrol_officers: number;
+  active_loa_count: number;
+  exemption_request_count: number;
+  contribution_snapshot: ContributionSnapshot[];
+  written_summary: string | null;
+  management_notes: string | null;
+  signoff_name: string | null;
+  signoff_rank: string | null;
+  bbcode: string | null;
+  published_at: string | null;
+  published_by: string | null;
+  revision_number: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type SummaryDraft = {
+  title: string;
+  quotaRequired: string;
+  totalRecruits: string;
+  totalReinstatements: string;
+  totalPromotions: string;
+  totalResignations: string;
+  totalTerminations: string;
+  activeLoaCount: string;
+  exemptionRequestCount: string;
+  writtenSummary: string;
+  managementNotes: string;
+  signoffName: string;
+  signoffRank: string;
+};
+
 const MANAGEMENT_ROLES = new Set([
   "Field Training Manager",
   "Field Training Supervisor",
@@ -103,6 +175,15 @@ const MANAGEMENT_ROLES = new Set([
   "FTP Staff",
   "LSPD STAFF",
 ]);
+
+const CONTRIBUTION_ROLES = [
+  "Field Training Officer",
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
 
 const FTM_ROLES = [
   "Field Training Manager",
@@ -137,6 +218,10 @@ export default function BatchManagement({ user }: Props) {
   const [availability, setAvailability] = useState<AvailabilityWindow[]>([]);
   const [preferences, setPreferences] = useState<SupervisionPreference[]>([]);
 
+  const [batchDors, setBatchDors] = useState<BatchDOR[]>([]);
+  const [contributionProfiles, setContributionProfiles] = useState<Profile[]>([]);
+  const [batchSummaries, setBatchSummaries] = useState<BatchSummary[]>([]);
+
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
   const [form, setForm] = useState<BatchForm>(EMPTY_FORM);
@@ -162,6 +247,44 @@ export default function BatchManagement({ user }: Props) {
   const selectedBatch = useMemo(
     () => batches.find((batch) => batch.id === selectedBatchId) ?? null,
     [batches, selectedBatchId]
+  );
+
+  const selectedSummary = useMemo(
+    () =>
+      batchSummaries.find(
+        (summary) =>
+          summary.batch_id ===
+          selectedBatchId
+      ) ?? null,
+    [
+      batchSummaries,
+      selectedBatchId,
+    ]
+  );
+
+  const publishedSummaryArchive = useMemo(
+    () =>
+      batchSummaries
+        .filter(
+          (summary) =>
+            summary.status ===
+              "published" ||
+            summary.status ===
+              "revised"
+        )
+        .sort(
+          (first, second) =>
+            String(
+              second.published_at ??
+              second.updated_at
+            ).localeCompare(
+              String(
+                first.published_at ??
+                first.updated_at
+              )
+            )
+        ),
+    [batchSummaries]
   );
 
   const assignedTrainees = useMemo(
@@ -290,7 +413,16 @@ export default function BatchManagement({ user }: Props) {
     setError("");
 
     try {
-      const [batchResult, traineeResult, ftmResult, availabilityResult, preferenceResult] =
+      const [
+        batchResult,
+        traineeResult,
+        ftmResult,
+        availabilityResult,
+        preferenceResult,
+        dorResult,
+        contributionProfileResult,
+        summaryResult,
+      ] =
         await Promise.all([
           supabase
             .from("ftp_batches")
@@ -326,6 +458,23 @@ export default function BatchManagement({ user }: Props) {
           supabase
             .from("ftp_supervision_preferences")
             .select("profile_id,available_for_p1s,max_active_p1s"),
+          supabase
+            .from("dors")
+            .select(
+              "id,trainee_id,fto_id,duration,patrol_date,submitted_at,status"
+            )
+            .eq("status", "submitted"),
+          supabase
+            .from("profiles")
+            .select(
+              "id,name,badge_number,rank,role,division"
+            )
+            .in("role", CONTRIBUTION_ROLES)
+            .order("name", { ascending: true }),
+          supabase
+            .from("ftp_batch_summaries")
+            .select("*")
+            .order("updated_at", { ascending: false }),
         ]);
 
       const firstError = [
@@ -334,6 +483,9 @@ export default function BatchManagement({ user }: Props) {
         ftmResult.error,
         availabilityResult.error,
         preferenceResult.error,
+        dorResult.error,
+        contributionProfileResult.error,
+        summaryResult.error,
       ].find(Boolean);
 
       if (firstError) throw firstError;
@@ -349,6 +501,26 @@ export default function BatchManagement({ user }: Props) {
       setFtms((ftmResult.data ?? []) as Profile[]);
       setAvailability((availabilityResult.data ?? []) as AvailabilityWindow[]);
       setPreferences((preferenceResult.data ?? []) as SupervisionPreference[]);
+
+      setBatchDors(
+        (dorResult.data ?? []) as BatchDOR[]
+      );
+      setContributionProfiles(
+        (contributionProfileResult.data ?? []) as Profile[]
+      );
+      setBatchSummaries(
+        (summaryResult.data ?? []).map(
+          (summary: any) => ({
+            ...summary,
+            contribution_snapshot:
+              Array.isArray(
+                summary.contribution_snapshot
+              )
+                ? summary.contribution_snapshot
+                : [],
+          })
+        ) as BatchSummary[]
+      );
 
       const desiredId =
         preferredBatchId ||
@@ -374,6 +546,35 @@ export default function BatchManagement({ user }: Props) {
     setForm(batchToForm(batch));
     setActiveTab("overview");
     setTraineeSearch("");
+    clearMessages();
+  }
+
+
+  function openArchivedSummary(
+    summary: BatchSummary
+  ) {
+    const batch =
+      batches.find(
+        (item) =>
+          item.id ===
+          summary.batch_id
+      );
+
+    if (!batch) {
+      return;
+    }
+
+    setSelectedBatchId(
+      batch.id
+    );
+    setForm(
+      batchToForm(
+        batch
+      )
+    );
+    setActiveTab(
+      "summary"
+    );
     clearMessages();
   }
 
@@ -942,6 +1143,11 @@ export default function BatchManagement({ user }: Props) {
                   onClick={() => setActiveTab("calendar")}
                 />
                 <TabButton
+                  label="Batch summary"
+                  active={activeTab === "summary"}
+                  onClick={() => setActiveTab("summary")}
+                />
+                <TabButton
                   label="Batch settings"
                   active={activeTab === "settings"}
                   onClick={() => setActiveTab("settings")}
@@ -981,6 +1187,31 @@ export default function BatchManagement({ user }: Props) {
                   <BatchCalendar
                     batch={selectedBatch}
                     milestones={milestones}
+                  />
+                )}
+
+                {activeTab === "summary" && (
+                  <BatchSummaryWorkspace
+                    batch={selectedBatch}
+                    trainees={assignedTrainees}
+                    dors={batchDors}
+                    contributionProfiles={contributionProfiles}
+                    existingSummary={selectedSummary}
+                    archive={publishedSummaryArchive}
+                    user={user}
+                    canEdit={canEdit}
+                    saving={saving}
+                    setSaving={setSaving}
+                    setError={setError}
+                    setSuccess={setSuccess}
+                    onReload={() =>
+                      loadData(
+                        selectedBatch.id
+                      )
+                    }
+                    onOpenArchivedSummary={
+                      openArchivedSummary
+                    }
                   />
                 )}
 
@@ -1447,6 +1678,1570 @@ function FtmAssignmentModal({
         </footer>
       </section>
     </div>
+  );
+}
+
+
+function BatchSummaryWorkspace({
+  batch,
+  trainees,
+  dors,
+  contributionProfiles,
+  existingSummary,
+  archive,
+  user,
+  canEdit,
+  saving,
+  setSaving,
+  setError,
+  setSuccess,
+  onReload,
+  onOpenArchivedSummary,
+}: {
+  batch: Batch;
+  trainees: Trainee[];
+  dors: BatchDOR[];
+  contributionProfiles: Profile[];
+  existingSummary: BatchSummary | null;
+  archive: BatchSummary[];
+  user: any;
+  canEdit: boolean;
+  saving: boolean;
+  setSaving: (value: boolean) => void;
+  setError: (value: string) => void;
+  setSuccess: (value: string) => void;
+  onReload: () => Promise<void>;
+  onOpenArchivedSummary: (
+    summary: BatchSummary
+  ) => void;
+}) {
+  const computed =
+    useMemo(
+      () =>
+        calculateBatchSummary({
+          batch,
+          trainees,
+          dors,
+          contributionProfiles,
+        }),
+      [
+        batch,
+        trainees,
+        dors,
+        contributionProfiles,
+      ]
+    );
+
+  const [draft, setDraft] =
+    useState<SummaryDraft>(() =>
+      summaryToDraft(
+        existingSummary,
+        batch,
+        computed,
+        user
+      )
+    );
+
+  const [previewOpen, setPreviewOpen] =
+    useState(false);
+
+  useEffect(() => {
+    setDraft(
+      summaryToDraft(
+        existingSummary,
+        batch,
+        computed,
+        user
+      )
+    );
+  }, [
+    existingSummary?.id,
+    existingSummary?.updated_at,
+    batch.id,
+    computed.totalPatrols,
+    computed.totalInstructionMinutes,
+  ]);
+
+  const contributionSnapshot =
+    existingSummary &&
+    (
+      existingSummary.status ===
+        "published" ||
+      existingSummary.status ===
+        "revised"
+    )
+      ? existingSummary.contribution_snapshot
+      : computed.contributions;
+
+  const bbcode =
+    buildBatchSummaryBBCode({
+      batch,
+      draft,
+      totalPatrols:
+        existingSummary &&
+        (
+          existingSummary.status ===
+            "published" ||
+          existingSummary.status ===
+            "revised"
+        )
+          ? existingSummary.total_patrols
+          : computed.totalPatrols,
+      totalInstructionMinutes:
+        existingSummary &&
+        (
+          existingSummary.status ===
+            "published" ||
+          existingSummary.status ===
+            "revised"
+        )
+          ? existingSummary.total_instruction_minutes
+          : computed.totalInstructionMinutes,
+      contributions:
+        contributionSnapshot,
+    });
+
+  const published =
+    existingSummary?.status ===
+      "published" ||
+    existingSummary?.status ===
+      "revised";
+
+  async function saveSummary(
+    publish: boolean
+  ) {
+    if (!canEdit) {
+      return;
+    }
+
+    if (
+      !draft.title.trim() ||
+      !draft.writtenSummary.trim()
+    ) {
+      setError(
+        "A summary title and written summary are required."
+      );
+      return;
+    }
+
+    if (
+      publish &&
+      !window.confirm(
+        `Publish and close ${batch.name}? The figures and contribution ranking will be permanently snapshotted for review.`
+      )
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const now =
+        new Date().toISOString();
+
+      const status:
+        BatchSummaryStatus =
+        publish
+          ? existingSummary &&
+            (
+              existingSummary.status ===
+                "published" ||
+              existingSummary.status ===
+                "revised"
+            )
+            ? "revised"
+            : "published"
+          : "draft";
+
+      const payload = {
+        batch_id:
+          batch.id,
+        title:
+          draft.title.trim(),
+        status,
+        quota_required:
+          safeInteger(
+            draft.quotaRequired,
+            3
+          ),
+        total_recruits:
+          safeInteger(
+            draft.totalRecruits,
+            trainees.length
+          ),
+        total_reinstatements:
+          safeInteger(
+            draft.totalReinstatements,
+            0
+          ),
+        total_promotions:
+          safeInteger(
+            draft.totalPromotions,
+            computed.totalPromotions
+          ),
+        total_resignations:
+          safeInteger(
+            draft.totalResignations,
+            computed.totalResignations
+          ),
+        total_terminations:
+          safeInteger(
+            draft.totalTerminations,
+            computed.totalTerminations
+          ),
+        total_patrols:
+          computed.totalPatrols,
+        total_instruction_minutes:
+          computed.totalInstructionMinutes,
+        officers_below_quota:
+          contributionSnapshot.filter(
+            (entry) =>
+              !entry.exempt &&
+              entry.patrols <
+                safeInteger(
+                  draft.quotaRequired,
+                  3
+                )
+          ).length,
+        zero_patrol_officers:
+          contributionProfiles.filter(
+            (profile) =>
+              !contributionSnapshot.some(
+                (entry) =>
+                  entry.profileId ===
+                  profile.id
+              )
+          ).length,
+        active_loa_count:
+          safeInteger(
+            draft.activeLoaCount,
+            0
+          ),
+        exemption_request_count:
+          safeInteger(
+            draft.exemptionRequestCount,
+            0
+          ),
+        contribution_snapshot:
+          contributionSnapshot,
+        written_summary:
+          draft.writtenSummary.trim(),
+        management_notes:
+          draft.managementNotes.trim() ||
+          null,
+        signoff_name:
+          draft.signoffName.trim() ||
+          null,
+        signoff_rank:
+          draft.signoffRank.trim() ||
+          null,
+        bbcode,
+        published_at:
+          publish
+            ? now
+            : existingSummary?.published_at ??
+              null,
+        published_by:
+          publish
+            ? user?.id ??
+              null
+            : existingSummary?.published_by ??
+              null,
+        revision_number:
+          publish &&
+          existingSummary
+            ? (
+                existingSummary.revision_number ??
+                1
+              ) + 1
+            : existingSummary?.revision_number ??
+              1,
+        updated_at:
+          now,
+      };
+
+      await auditAction({
+        user,
+        action:
+          publish
+            ? "PUBLISH_BATCH_SUMMARY"
+            : "SAVE_BATCH_SUMMARY_DRAFT",
+        category:
+          "Intakes",
+        entityType:
+          "ftp_batch_summary",
+        entityId:
+          existingSummary?.id,
+        targetName:
+          draft.title.trim(),
+        oldData:
+          existingSummary ??
+          null,
+        newData:
+          payload,
+        execute:
+          async () => {
+            const result =
+              await supabase
+                .from(
+                  "ftp_batch_summaries"
+                )
+                .upsert(
+                  payload,
+                  {
+                    onConflict:
+                      "batch_id",
+                  }
+                )
+                .select()
+                .single();
+
+            if (result.error) {
+              throw result.error;
+            }
+
+            if (publish) {
+              const batchResult =
+                await supabase
+                  .from(
+                    "ftp_batches"
+                  )
+                  .update({
+                    status:
+                      "Completed",
+                  })
+                  .eq(
+                    "id",
+                    batch.id
+                  );
+
+              if (
+                batchResult.error
+              ) {
+                throw batchResult.error;
+              }
+            }
+
+            return result;
+          },
+      });
+
+      setSuccess(
+        publish
+          ? "Batch summary published, archived and distributed to all FTOs+ for review."
+          : "Batch summary draft saved."
+      );
+
+      await onReload();
+    } catch (
+      summaryError: any
+    ) {
+      console.error(
+        "SAVE BATCH SUMMARY ERROR",
+        summaryError
+      );
+
+      setError(
+        summaryError?.message ??
+        "The batch summary could not be saved."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copyBBCode() {
+    try {
+      await navigator.clipboard.writeText(
+        bbcode
+      );
+
+      setSuccess(
+        "Batch summary BBCode copied."
+      );
+    } catch {
+      setError(
+        "The BBCode could not be copied automatically."
+      );
+    }
+  }
+
+  return (
+    <div className="bm-stack">
+      <section className="bm-summary-hero">
+        <div>
+          <div className="bm-eyebrow">
+            END OF BATCH REPORTING
+          </div>
+
+          <h3>
+            Batch Summary & Archive
+          </h3>
+
+          <p>
+            Generate the official written summary, permanently snapshot the figures and distribute the published report to every FTO+ dashboard for acknowledgement.
+          </p>
+        </div>
+
+        <div className="bm-summary-status">
+          <span>
+            STATUS
+          </span>
+
+          <strong>
+            {published
+              ? "Published"
+              : existingSummary
+                ? "Draft"
+                : "Not started"}
+          </strong>
+
+          {existingSummary?.published_at && (
+            <small>
+              {formatDateTime(
+                existingSummary.published_at
+              )}
+            </small>
+          )}
+        </div>
+      </section>
+
+      <section className="bm-summary-stat-grid">
+        <SummaryMetric
+          label="Recruits"
+          value={
+            safeInteger(
+              draft.totalRecruits,
+              trainees.length
+            )
+          }
+        />
+
+        <SummaryMetric
+          label="Promotions"
+          value={
+            safeInteger(
+              draft.totalPromotions,
+              computed.totalPromotions
+            )
+          }
+        />
+
+        <SummaryMetric
+          label="Recorded FTPs"
+          value={
+            computed.totalPatrols
+          }
+        />
+
+        <SummaryMetric
+          label="Instruction Time"
+          value={
+            formatDurationLong(
+              computed.totalInstructionMinutes
+            )
+          }
+        />
+
+        <SummaryMetric
+          label="Below Quota"
+          value={
+            contributionSnapshot.filter(
+              (entry) =>
+                !entry.exempt &&
+                entry.patrols <
+                  safeInteger(
+                    draft.quotaRequired,
+                    3
+                  )
+            ).length
+          }
+          alert
+        />
+      </section>
+
+      <section className="bm-panel">
+        <div className="bm-panel-title-row">
+          <PanelHeading
+            eyebrow="OFFICIAL REPORT"
+            title="Written summary"
+          />
+
+          <div className="bm-summary-actions">
+            <button
+              type="button"
+              className="bm-button bm-button-secondary"
+              onClick={() =>
+                setPreviewOpen(
+                  !previewOpen
+                )
+              }
+            >
+              {previewOpen
+                ? "Hide BBCode"
+                : "Preview BBCode"}
+            </button>
+
+            <button
+              type="button"
+              className="bm-button bm-button-secondary"
+              onClick={() =>
+                void copyBBCode()
+              }
+            >
+              Copy BBCode
+            </button>
+          </div>
+        </div>
+
+        <div className="bm-summary-form-grid">
+          <Field label="Report title">
+            <input
+              className="bm-input"
+              value={draft.title}
+              disabled={
+                !canEdit ||
+                saving
+              }
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  title:
+                    event.target.value,
+                })
+              }
+            />
+          </Field>
+
+          <Field label="Minimum FTO patrol quota">
+            <input
+              className="bm-input"
+              type="number"
+              min="0"
+              value={
+                draft.quotaRequired
+              }
+              disabled={
+                !canEdit ||
+                saving
+              }
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  quotaRequired:
+                    event.target.value,
+                })
+              }
+            />
+          </Field>
+        </div>
+
+        <Field label="Management written summary">
+          <textarea
+            className="bm-textarea bm-summary-commentary"
+            value={
+              draft.writtenSummary
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                writtenSummary:
+                  event.target.value,
+              })
+            }
+          />
+        </Field>
+
+        <div className="bm-summary-count-grid">
+          <SummaryNumberField
+            label="Recruits"
+            value={
+              draft.totalRecruits
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                totalRecruits:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Reinstatements"
+            value={
+              draft.totalReinstatements
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                totalReinstatements:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Promotions"
+            value={
+              draft.totalPromotions
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                totalPromotions:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Resignations"
+            value={
+              draft.totalResignations
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                totalResignations:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Terminations"
+            value={
+              draft.totalTerminations
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                totalTerminations:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Active LOAs"
+            value={
+              draft.activeLoaCount
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                activeLoaCount:
+                  value,
+              })
+            }
+          />
+
+          <SummaryNumberField
+            label="Exemption requests"
+            value={
+              draft.exemptionRequestCount
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                exemptionRequestCount:
+                  value,
+              })
+            }
+          />
+        </div>
+
+        <Field label="Additional management notes">
+          <textarea
+            className="bm-textarea"
+            value={
+              draft.managementNotes
+            }
+            disabled={
+              !canEdit ||
+              saving
+            }
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                managementNotes:
+                  event.target.value,
+              })
+            }
+            placeholder="Extensions, late joiners, exemptions or other context..."
+          />
+        </Field>
+
+        <div className="bm-summary-form-grid">
+          <Field label="Sign-off name">
+            <input
+              className="bm-input"
+              value={
+                draft.signoffName
+              }
+              disabled={
+                !canEdit ||
+                saving
+              }
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  signoffName:
+                    event.target.value,
+                })
+              }
+            />
+          </Field>
+
+          <Field label="Sign-off rank/title">
+            <input
+              className="bm-input"
+              value={
+                draft.signoffRank
+              }
+              disabled={
+                !canEdit ||
+                saving
+              }
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  signoffRank:
+                    event.target.value,
+                })
+              }
+            />
+          </Field>
+        </div>
+
+        {previewOpen && (
+          <pre className="bm-bbcode-preview">
+            {bbcode}
+          </pre>
+        )}
+
+        {canEdit && (
+          <div className="bm-summary-publish-row">
+            <button
+              type="button"
+              className="bm-button bm-button-secondary"
+              disabled={saving}
+              onClick={() =>
+                void saveSummary(
+                  false
+                )
+              }
+            >
+              {saving
+                ? "Saving…"
+                : "Save draft"}
+            </button>
+
+            <button
+              type="button"
+              className="bm-button bm-button-primary"
+              disabled={saving}
+              onClick={() =>
+                void saveSummary(
+                  true
+                )
+              }
+            >
+              {published
+                ? "Publish revision"
+                : "Publish & close batch"}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="bm-panel">
+        <div className="bm-panel-title-row">
+          <PanelHeading
+            eyebrow="FTO CONTRIBUTIONS"
+            title="Ranked contribution table"
+          />
+
+          <span className="bm-count-pill">
+            {contributionSnapshot.length}
+          </span>
+        </div>
+
+        <div className="bm-contribution-table">
+          <div className="bm-contribution-header">
+            <span>#</span>
+            <span>Officer</span>
+            <span>FTPs</span>
+            <span>Hours</span>
+            <span>Status</span>
+          </div>
+
+          {contributionSnapshot.map(
+            (
+              contribution,
+              index
+            ) => {
+              const below =
+                !contribution.exempt &&
+                contribution.patrols <
+                  safeInteger(
+                    draft.quotaRequired,
+                    3
+                  );
+
+              return (
+                <div
+                  key={
+                    contribution.profileId
+                  }
+                  className={`bm-contribution-row ${
+                    below
+                      ? "is-below"
+                      : ""
+                  }`}
+                >
+                  <span>
+                    {index + 1}
+                  </span>
+
+                  <div>
+                    <strong>
+                      {contribution.name}
+                    </strong>
+
+                    <small>
+                      {contribution.rank}
+                    </small>
+                  </div>
+
+                  <strong>
+                    {contribution.patrols}
+                  </strong>
+
+                  <span>
+                    {formatDurationLong(
+                      contribution.minutes
+                    )}
+                  </span>
+
+                  <span>
+                    {contribution.exempt
+                      ? "Exempt"
+                      : below
+                        ? "Below quota"
+                        : "Met quota"}
+                  </span>
+                </div>
+              );
+            }
+          )}
+
+          {!contributionSnapshot.length && (
+            <EmptyState
+              title="No documented FTO contributions"
+              text="Submitted DORs within the batch period will appear here."
+              compact
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="bm-panel">
+        <div className="bm-panel-title-row">
+          <PanelHeading
+            eyebrow="PERMANENT RECORD"
+            title="Summary archive"
+          />
+
+          <span className="bm-count-pill">
+            {archive.length}
+          </span>
+        </div>
+
+        <div className="bm-summary-archive">
+          {archive.map(
+            (summary) => (
+              <button
+                key={summary.id}
+                type="button"
+                className="bm-summary-archive-row"
+                onClick={() =>
+                  onOpenArchivedSummary(
+                    summary
+                  )
+                }
+              >
+                <div>
+                  <strong>
+                    {summary.title}
+                  </strong>
+
+                  <span>
+                    {summary.total_patrols} patrols ·{" "}
+                    {formatDurationLong(
+                      summary.total_instruction_minutes
+                    )} ·{" "}
+                    {summary.total_promotions} promotions
+                  </span>
+                </div>
+
+                <div>
+                  <span>
+                    {summary.published_at
+                      ? formatDateTime(
+                          summary.published_at
+                        )
+                      : "Draft"}
+                  </span>
+
+                  <strong>
+                    View →
+                  </strong>
+                </div>
+              </button>
+            )
+          )}
+
+          {!archive.length && (
+            <EmptyState
+              title="No published summaries yet"
+              text="Published batch reports will remain available here permanently."
+              compact
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+  alert = false,
+}: {
+  label: string;
+  value: string | number;
+  alert?: boolean;
+}) {
+  return (
+    <div
+      className={`bm-summary-metric ${
+        alert
+          ? "is-alert"
+          : ""
+      }`}
+    >
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function SummaryNumberField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        className="bm-input"
+        type="number"
+        min="0"
+        value={value}
+        disabled={disabled}
+        onChange={(event) =>
+          onChange(
+            event.target.value
+          )
+        }
+      />
+    </Field>
+  );
+}
+
+function calculateBatchSummary({
+  batch,
+  trainees,
+  dors,
+  contributionProfiles,
+}: {
+  batch: Batch;
+  trainees: Trainee[];
+  dors: BatchDOR[];
+  contributionProfiles: Profile[];
+}) {
+  const periodEnd =
+    batch.final_completion_deadline ??
+    addDays(
+      batch.induction_date,
+      FTP_MILESTONES.completion
+    );
+
+  const eligibleDors =
+    dors.filter(
+      (dor) => {
+        const date =
+          (
+            dor.patrol_date ??
+            dor.submitted_at ??
+            ""
+          ).slice(
+            0,
+            10
+          );
+
+        return (
+          dor.status ===
+            "submitted" &&
+          date >=
+            batch.induction_date &&
+          date <=
+            periodEnd
+        );
+      }
+    );
+
+  const contributionMap =
+    new Map<
+      string,
+      {
+        patrols: number;
+        minutes: number;
+      }
+    >();
+
+  for (
+    const dor of eligibleDors
+  ) {
+    const current =
+      contributionMap.get(
+        dor.fto_id
+      ) ?? {
+        patrols: 0,
+        minutes: 0,
+      };
+
+    current.patrols += 1;
+    current.minutes +=
+      parseDurationMinutes(
+        dor.duration
+      );
+
+    contributionMap.set(
+      dor.fto_id,
+      current
+    );
+  }
+
+  const contributions =
+    contributionProfiles
+      .map(
+        (
+          profile
+        ): ContributionSnapshot => {
+          const totals =
+            contributionMap.get(
+              profile.id
+            ) ?? {
+              patrols: 0,
+              minutes: 0,
+            };
+
+          const role =
+            profile.role ??
+            "";
+
+          const exempt =
+            role ===
+              "Field Training Manager" ||
+            role ===
+              "Field Training Supervisor" ||
+            role ===
+              "FTP Staff" ||
+            role ===
+              "STAFF" ||
+            role ===
+              "LSPD STAFF";
+
+          return {
+            profileId:
+              profile.id,
+            name:
+              profile.name ??
+              "Unnamed FTO",
+            rank:
+              profile.rank ??
+              "Rank not set",
+            badgeNumber:
+              profile.badge_number ??
+              "N/A",
+            patrols:
+              totals.patrols,
+            minutes:
+              totals.minutes,
+            exempt,
+            note:
+              exempt
+                ? "Management exempt"
+                : "",
+          };
+        }
+      )
+      .filter(
+        (entry) =>
+          entry.patrols > 0
+      )
+      .sort(
+        (
+          first,
+          second
+        ) =>
+          second.minutes -
+            first.minutes ||
+          second.patrols -
+            first.patrols ||
+          first.name.localeCompare(
+            second.name
+          )
+      );
+
+  return {
+    totalPatrols:
+      eligibleDors.length,
+    totalInstructionMinutes:
+      eligibleDors.reduce(
+        (
+          total,
+          dor
+        ) =>
+          total +
+          parseDurationMinutes(
+            dor.duration
+          ),
+        0
+      ),
+    totalPromotions:
+      trainees.filter(
+        (trainee) =>
+          trainee.status ===
+            "P2" ||
+          trainee.status ===
+            "Completed"
+      ).length,
+    totalResignations:
+      trainees.filter(
+        (trainee) =>
+          String(
+            trainee.status
+          ).toLowerCase() ===
+          "resigned"
+      ).length,
+    totalTerminations:
+      trainees.filter(
+        (trainee) =>
+          String(
+            trainee.status
+          ).toLowerCase() ===
+          "terminated"
+      ).length,
+    contributions,
+  };
+}
+
+function summaryToDraft(
+  summary: BatchSummary | null,
+  batch: Batch,
+  computed: ReturnType<
+    typeof calculateBatchSummary
+  >,
+  user: any
+): SummaryDraft {
+  if (summary) {
+    return {
+      title:
+        summary.title,
+      quotaRequired:
+        String(
+          summary.quota_required
+        ),
+      totalRecruits:
+        String(
+          summary.total_recruits
+        ),
+      totalReinstatements:
+        String(
+          summary.total_reinstatements
+        ),
+      totalPromotions:
+        String(
+          summary.total_promotions
+        ),
+      totalResignations:
+        String(
+          summary.total_resignations
+        ),
+      totalTerminations:
+        String(
+          summary.total_terminations
+        ),
+      activeLoaCount:
+        String(
+          summary.active_loa_count
+        ),
+      exemptionRequestCount:
+        String(
+          summary.exemption_request_count
+        ),
+      writtenSummary:
+        summary.written_summary ??
+        "",
+      managementNotes:
+        summary.management_notes ??
+        "",
+      signoffName:
+        summary.signoff_name ??
+        user?.name ??
+        "",
+      signoffRank:
+        summary.signoff_rank ??
+        user?.rank ??
+        "",
+    };
+  }
+
+  const monthLabel =
+    new Date(
+      `${batch.final_completion_deadline ?? addDays(batch.induction_date, FTP_MILESTONES.completion)}T00:00:00`
+    )
+      .toLocaleDateString(
+        "en-GB",
+        {
+          month:
+            "short",
+          year:
+            "numeric",
+        }
+      )
+      .toUpperCase();
+
+  return {
+    title:
+      `${monthLabel} CONTRIBUTIONS AND SUMMARY`,
+    quotaRequired:
+      "3",
+    totalRecruits:
+      String(
+        batch.intake_size ??
+        0
+      ),
+    totalReinstatements:
+      "0",
+    totalPromotions:
+      String(
+        computed.totalPromotions
+      ),
+    totalResignations:
+      String(
+        computed.totalResignations
+      ),
+    totalTerminations:
+      String(
+        computed.totalTerminations
+      ),
+    activeLoaCount:
+      "0",
+    exemptionRequestCount:
+      "0",
+    writtenSummary:
+      `The ${batch.name} intake has now reached the end of its scheduled Field Training Programme. This summary records the outcomes of the intake and the documented contributions made by Field Training Officers during the batch period.\n\nField Training Management thanks every officer who contributed patrol time, feedback and supervision throughout the intake. Any recruits who remain extended or joined later than the main intake should continue through the programme under the direction of FTP leadership.`,
+    managementNotes:
+      "",
+    signoffName:
+      user?.name ??
+      "",
+    signoffRank:
+      user?.rank ??
+      "Field Training Program",
+  };
+}
+
+function buildBatchSummaryBBCode({
+  batch,
+  draft,
+  totalPatrols,
+  totalInstructionMinutes,
+  contributions,
+}: {
+  batch: Batch;
+  draft: SummaryDraft;
+  totalPatrols: number;
+  totalInstructionMinutes: number;
+  contributions: ContributionSnapshot[];
+}) {
+  const contributionLines =
+    contributions
+      .filter(
+        (entry) =>
+          entry.patrols >
+          0
+      )
+      .map(
+        (
+          entry,
+          index
+        ) =>
+          `[b]${index + 1}.[/b] ${entry.name} — [i]${formatDurationWords(
+            entry.minutes
+          )}[/i]`
+      )
+      .join("\n");
+
+  return `[center][ftplogo=180][/ftplogo]
+[b][size=175]${draft.title.toUpperCase()}[/size]
+[size=125]FIELD TRAINING PROGRAM[/size][/b][/center]
+[hr]
+[justify]${draft.writtenSummary.trim()}[/justify][br][/br]
+[b]TOTAL NUMBER OF RECRUITS:[/b] ${safeInteger(
+    draft.totalRecruits,
+    0
+  )}
+[b]TOTAL NUMBER OF REINSTATEMENTS:[/b] ${safeInteger(
+    draft.totalReinstatements,
+    0
+  )}
+[b]TOTAL NUMBER OF PROMOTIONS:[/b] ${safeInteger(
+    draft.totalPromotions,
+    0
+  )}
+[b]TOTAL NUMBER OF RESIGNATIONS:[/b] ${safeInteger(
+    draft.totalResignations,
+    0
+  )}
+[b]TOTAL NUMBER OF TERMINATIONS:[/b] ${safeInteger(
+    draft.totalTerminations,
+    0
+  )}
+[br][/br]
+[hr]
+[br][/br]
+[justify]The following chart shows documented Field Training Officer contributions for ${batch.name}. Officers are listed by total recorded instruction time. Only submitted Daily Observation Reports within the batch period are included.[/justify]
+[b]TOTAL RECORDED FTPS:[/b] ${totalPatrols}
+[b]TOTAL INSTRUCTION TIME:[/b] ${formatDurationWords(
+    totalInstructionMinutes
+  )}
+${contributionLines || "No documented contributions were recorded."}
+[br]
+[center][size=125][b]OFFICERS NOT LISTED ABOVE HAVE NO DOCUMENTED FIELD TRAINING PATROL CONTRIBUTION FOR THIS BATCH.[/b][/size][/center]
+${draft.managementNotes.trim()
+  ? `[br][/br][justify]${draft.managementNotes.trim()}[/justify]`
+  : ""}
+Respectfully,
+${draft.signoffName.trim()}
+${draft.signoffRank.trim()}`;
+}
+
+function safeInteger(
+  value: string,
+  fallback: number
+) {
+  const parsed =
+    Number.parseInt(
+      value,
+      10
+    );
+
+  return Number.isFinite(
+    parsed
+  )
+    ? Math.max(
+        0,
+        parsed
+      )
+    : fallback;
+}
+
+function parseDurationMinutes(
+  value: string | null
+) {
+  if (!value) {
+    return 0;
+  }
+
+  const clean =
+    value.trim();
+
+  const clockMatch =
+    clean.match(
+      /^(\d{1,3}):(\d{2})$/
+    );
+
+  if (clockMatch) {
+    return (
+      Number(
+        clockMatch[1]
+      ) *
+        60 +
+      Number(
+        clockMatch[2]
+      )
+    );
+  }
+
+  const hourMatch =
+    clean.match(
+      /(\d+(?:\.\d+)?)\s*h/i
+    );
+
+  const minuteMatch =
+    clean.match(
+      /(\d+)\s*m/i
+    );
+
+  return Math.round(
+    (
+      hourMatch
+        ? Number(
+            hourMatch[1]
+          ) * 60
+        : 0
+    ) +
+      (
+        minuteMatch
+          ? Number(
+              minuteMatch[1]
+            )
+          : 0
+      )
+  );
+}
+
+function formatDurationLong(
+  minutes: number
+) {
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  const remainder =
+    minutes % 60;
+
+  return `${hours}h ${String(
+    remainder
+  ).padStart(
+    2,
+    "0"
+  )}m`;
+}
+
+function formatDurationWords(
+  minutes: number
+) {
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  const remainder =
+    minutes % 60;
+
+  if (
+    hours &&
+    remainder
+  ) {
+    return `${hours} hour${
+      hours === 1
+        ? ""
+        : "s"
+    } ${remainder} minute${
+      remainder === 1
+        ? ""
+        : "s"
+    }`;
+  }
+
+  if (hours) {
+    return `${hours} hour${
+      hours === 1
+        ? ""
+        : "s"
+    }`;
+  }
+
+  return `${remainder} minute${
+    remainder === 1
+      ? ""
+      : "s"
+  }`;
+}
+
+function formatDateTime(
+  value: string
+) {
+  return new Date(
+    value
+  ).toLocaleString(
+    "en-GB",
+    {
+      day:
+        "2-digit",
+      month:
+        "short",
+      year:
+        "numeric",
+      hour:
+        "2-digit",
+      minute:
+        "2-digit",
+    }
   );
 }
 
@@ -2479,6 +4274,200 @@ function Styles() {
         line-height: 1.45;
       }
 
+
+      .bm-summary-hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding: 22px;
+        border: 1px solid #31517c;
+        border-radius: 15px;
+        background:
+          radial-gradient(circle at 88% 20%, rgba(56,189,248,.13), transparent 24%),
+          linear-gradient(145deg, #142a4d, #0b182b);
+      }
+
+      .bm-summary-hero h3 {
+        margin: 6px 0 8px;
+        font-size: 24px;
+      }
+
+      .bm-summary-hero p {
+        max-width: 780px;
+        margin: 0;
+        color: var(--bm-muted);
+        line-height: 1.5;
+      }
+
+      .bm-summary-status {
+        min-width: 180px;
+        display: grid;
+        gap: 5px;
+        padding: 14px;
+        border: 1px solid var(--bm-border);
+        border-radius: 11px;
+        background: #081426;
+      }
+
+      .bm-summary-status span,
+      .bm-summary-status small {
+        color: var(--bm-muted);
+        font-size: 10px;
+      }
+
+      .bm-summary-stat-grid {
+        display: grid;
+        grid-template-columns:
+          repeat(5, minmax(0,1fr));
+        gap: 10px;
+      }
+
+      .bm-summary-metric {
+        display: grid;
+        gap: 6px;
+        padding: 15px;
+        border: 1px solid var(--bm-border);
+        border-radius: 12px;
+        background: #0a1729;
+      }
+
+      .bm-summary-metric span {
+        color: var(--bm-muted);
+        font-size: 10px;
+      }
+
+      .bm-summary-metric strong {
+        font-size: 22px;
+      }
+
+      .bm-summary-metric.is-alert {
+        border-color: rgba(245,158,11,.5);
+        background: rgba(85,53,13,.18);
+      }
+
+      .bm-summary-actions,
+      .bm-summary-publish-row {
+        display: flex;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+
+      .bm-summary-form-grid {
+        display: grid;
+        grid-template-columns:
+          minmax(0,2fr) minmax(180px,.6fr);
+        gap: 12px;
+        margin: 16px 0;
+      }
+
+      .bm-summary-commentary {
+        min-height: 220px;
+      }
+
+      .bm-summary-count-grid {
+        display: grid;
+        grid-template-columns:
+          repeat(4, minmax(0,1fr));
+        gap: 10px;
+        margin: 16px 0;
+      }
+
+      .bm-summary-publish-row {
+        justify-content: flex-end;
+        margin-top: 17px;
+      }
+
+      .bm-bbcode-preview {
+        max-height: 430px;
+        overflow: auto;
+        padding: 16px;
+        margin: 17px 0 0;
+        color: #dbeafe;
+        white-space: pre-wrap;
+        background: #050d19;
+        border: 1px solid #31517c;
+        border-radius: 11px;
+        font: 12px/1.55 Consolas, monospace;
+      }
+
+      .bm-contribution-table {
+        overflow: hidden;
+        margin-top: 15px;
+        border: 1px solid var(--bm-border);
+        border-radius: 12px;
+      }
+
+      .bm-contribution-header,
+      .bm-contribution-row {
+        display: grid;
+        grid-template-columns:
+          50px minmax(200px,1fr) 80px 130px 130px;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+      }
+
+      .bm-contribution-header {
+        color: var(--bm-muted);
+        background: #081426;
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: .08em;
+      }
+
+      .bm-contribution-row {
+        border-top: 1px solid var(--bm-border);
+        background: #0a1729;
+      }
+
+      .bm-contribution-row.is-below {
+        background: rgba(85,53,13,.18);
+      }
+
+      .bm-contribution-row > div {
+        display: grid;
+        gap: 4px;
+      }
+
+      .bm-contribution-row small {
+        color: var(--bm-muted);
+      }
+
+      .bm-summary-archive {
+        display: grid;
+        gap: 9px;
+        margin-top: 15px;
+      }
+
+      .bm-summary-archive-row {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 15px;
+        padding: 14px;
+        text-align: left;
+        border: 1px solid var(--bm-border);
+        border-radius: 11px;
+        background: #0a1729;
+        cursor: pointer;
+      }
+
+      .bm-summary-archive-row > div {
+        display: grid;
+        gap: 5px;
+      }
+
+      .bm-summary-archive-row > div:last-child {
+        justify-items: end;
+      }
+
+      .bm-summary-archive-row span {
+        color: var(--bm-muted);
+        font-size: 10px;
+      }
+
       .bm-settings-panel { max-width: 880px; }
       .bm-form { display: grid; gap: 16px; margin-top: 18px; }
       .bm-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
@@ -2577,7 +4566,18 @@ function Styles() {
         .bm-calendar-timeline {
           grid-template-columns: repeat(2, minmax(0,1fr));
         }
-        .bm-form-grid { grid-template-columns: 1fr; }
+        .bm-form-grid,
+        .bm-summary-form-grid {
+          grid-template-columns: 1fr;
+        }
+        .bm-summary-stat-grid {
+          grid-template-columns:
+            repeat(2, minmax(0,1fr));
+        }
+        .bm-summary-count-grid {
+          grid-template-columns:
+            repeat(2, minmax(0,1fr));
+        }
         .bm-date-preview { grid-template-columns: 1fr; }
       }
 
@@ -2605,7 +4605,29 @@ function Styles() {
         .bm-calendar-timeline::before {
           display: none;
         }
-        .bm-exception-row, .bm-modal-person, .bm-ranking-topline, .bm-modal-footer { flex-direction: column; align-items: stretch; }
+        .bm-summary-hero,
+        .bm-summary-archive-row,
+        .bm-exception-row,
+        .bm-modal-person,
+        .bm-ranking-topline,
+        .bm-modal-footer {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .bm-summary-stat-grid,
+        .bm-summary-count-grid {
+          grid-template-columns: 1fr;
+        }
+        .bm-contribution-header {
+          display: none;
+        }
+        .bm-contribution-row {
+          grid-template-columns:
+            34px minmax(0,1fr);
+        }
+        .bm-contribution-row > *:nth-child(n+3) {
+          grid-column: 2;
+        }
         .bm-load-row { grid-template-columns: 1fr; }
         .bm-modal-backdrop { padding: 0; }
         .bm-modal { max-height: 100vh; height: 100vh; border-radius: 0; }

@@ -391,7 +391,8 @@ export function getSidebarMenuItems(
     canManageFTP(role)
   ) {
     menuItems.push(
-      "FTP Management"
+      "FTP Management",
+      "Batch Management"
     );
   }
 

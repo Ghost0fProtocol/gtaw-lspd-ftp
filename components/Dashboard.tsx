@@ -8,6 +8,7 @@ import {
 
 import { supabase } from "../lib/supabase";
 import DORDraftAlerts from "./dashboard/DORDraftAlerts";
+import BatchSummaryReviewNotice from "./BatchSummaryReviewNotice";
 
 import {
   canCompletePPOWER,
@@ -1405,12 +1406,23 @@ export default function Dashboard({
       )}
 
       {!loading && (
+        <BatchSummaryReviewNotice
+          user={
+            user
+          }
+        />
+      )}
+
+      {!loading && (
         <DORDraftAlerts
           drafts={
             draftAlerts
           }
           openDOR={
             openDOR
+          }
+          user={
+            user
           }
         />
       )}
@@ -1537,17 +1549,32 @@ export default function Dashboard({
                 openDOR={
                   openDOR
                 }
+                onNavigate={
+                  onNavigate
+                }
               />
 
-              <OfficerSpotlight
+              <OperationalPriority
                 trainees={
                   trainees
+                }
+                draftAlerts={
+                  draftAlerts
+                }
+                openDOR={
+                  openDOR
+                }
+                onNavigate={
+                  onNavigate
                 }
               />
 
               <SystemSnapshot
                 role={role}
                 stats={stats}
+                onNavigate={
+                  onNavigate
+                }
               />
             </div>
           </section>
@@ -2651,19 +2678,470 @@ function PerformanceTrend({
   );
 }
 
-function OfficerSpotlight({
+function OperationalPriority({
   trainees,
+  draftAlerts,
+  openDOR,
+  onNavigate,
 }: {
   trainees: any[];
+  draftAlerts: DORDraftAlert[];
+  openDOR: (
+    traineeId: string
+  ) => void;
+  onNavigate: (
+    page: string
+  ) => void;
 }) {
-  const spotlight =
-    trainees
+  const priority =
+    getOperationalPriority({
+      trainees,
+      draftAlerts,
+    });
+
+  if (!priority) {
+    return (
+      <section style={sidePanelStyle}>
+        <div style={panelHeaderStyle}>
+          <div>
+            <p style={panelEyebrowStyle}>
+              OPERATIONAL PRIORITY
+            </p>
+
+            <h2 style={sidePanelTitleStyle}>
+              No Immediate Action
+            </h2>
+          </div>
+
+          <span style={priorityClearBadgeStyle}>
+            CLEAR
+          </span>
+        </div>
+
+        <div style={priorityClearStateStyle}>
+          <strong>
+            No trainee record currently requires priority attention.
+          </strong>
+
+          <p style={priorityDetailStyle}>
+            Overdue paperwork, flagged records and progression actions will appear here automatically.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  const activePriority =
+    priority;
+
+  const tone =
+    getToneStyle(
+      activePriority.tone
+    );
+
+  function handleOpen() {
+    if (
+      activePriority.actionType ===
+        "dor" &&
+      activePriority.traineeId
+    ) {
+      openDOR(
+        activePriority.traineeId
+      );
+      return;
+    }
+
+    onNavigate(
+      activePriority.destination
+    );
+  }
+
+  return (
+    <section style={sidePanelStyle}>
+      <div style={panelHeaderStyle}>
+        <div>
+          <p style={panelEyebrowStyle}>
+            OPERATIONAL PRIORITY
+          </p>
+
+          <h2 style={sidePanelTitleStyle}>
+            {activePriority.officerName}
+          </h2>
+        </div>
+
+        <span
+          style={{
+            ...priorityLevelBadgeStyle,
+            color:
+              tone.text,
+            backgroundColor:
+              tone.background,
+            borderColor:
+              tone.border,
+          }}
+        >
+          {activePriority.badge}
+        </span>
+      </div>
+
+      <div
+        style={{
+          ...prioritySummaryStyle,
+          borderColor:
+            tone.border,
+          backgroundColor:
+            tone.background,
+        }}
+      >
+        <strong style={priorityTitleStyle}>
+          {activePriority.title}
+        </strong>
+
+        <p style={priorityDetailStyle}>
+          {activePriority.detail}
+        </p>
+      </div>
+
+      <div style={priorityMetricGridStyle}>
+        {activePriority.metrics.map(
+          (metric) => (
+            <div
+              key={metric.label}
+              style={priorityMetricStyle}
+            >
+              <span style={priorityMetricLabelStyle}>
+                {metric.label}
+              </span>
+
+              <strong style={priorityMetricValueStyle}>
+                {metric.value}
+              </strong>
+            </div>
+          )
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={
+          handleOpen
+        }
+        style={priorityActionButtonStyle}
+      >
+        {activePriority.actionLabel}
+        <span>→</span>
+      </button>
+    </section>
+  );
+}
+
+function getOperationalPriority({
+  trainees,
+  draftAlerts,
+}: {
+  trainees: any[];
+  draftAlerts: DORDraftAlert[];
+}) {
+  const activeTrainees =
+    trainees.filter(
+      (trainee) =>
+        getTraineeStage(
+          trainee
+        ) !== "P2"
+    );
+
+  const urgentDraft =
+    draftAlerts
+      .map(
+        (draft) => ({
+          ...draft,
+          ageMinutes:
+            getAgeMinutes(
+              draft.lastSavedAt
+            ),
+        })
+      )
       .filter(
-        (trainee) =>
+        (draft) =>
+          draft.ageMinutes >=
+          18 * 60
+      )
+      .sort(
+        (
+          first,
+          second
+        ) =>
+          second.ageMinutes -
+          first.ageMinutes
+      )[0];
+
+  if (urgentDraft) {
+    const overdue =
+      urgentDraft.ageMinutes >=
+      24 * 60;
+
+    return {
+      officerName:
+        urgentDraft.traineeName,
+      title:
+        overdue
+          ? "Overdue DOR Draft"
+          : "DOR Draft Approaching Deadline",
+      detail:
+        `Patrol ${urgentDraft.patrolNumber ?? "?"} was started by ${urgentDraft.startedByName} and still requires completion.`,
+      badge:
+        overdue
+          ? "OVERDUE"
+          : "DUE SOON",
+      tone:
+        overdue
+          ? "red"
+          : "amber",
+      traineeId:
+        urgentDraft.traineeId,
+      actionType:
+        "dor",
+      destination:
+        "Daily Observation Reports",
+      actionLabel:
+        "Open Draft",
+      metrics: [
+        {
+          label:
+            "Patrol",
+          value:
+            String(
+              urgentDraft.patrolNumber ??
+              "?"
+            ),
+        },
+        {
+          label:
+            "Age",
+          value:
+            formatPriorityAge(
+              urgentDraft.ageMinutes
+            ),
+        },
+      ],
+    };
+  }
+
+  const reviewRecord =
+    activeTrainees.find(
+      (trainee) =>
+        trainee.status ===
+        "Review"
+    );
+
+  if (reviewRecord) {
+    return {
+      officerName:
+        getTraineeName(
+          reviewRecord
+        ),
+      title:
+        "Record Marked for Review",
+      detail:
+        "This trainee record has been flagged and should be reviewed before further progression.",
+      badge:
+        "REVIEW",
+      tone:
+        "red",
+      traineeId:
+        reviewRecord.id,
+      actionType:
+        "page",
+      destination:
+        "P1 Records",
+      actionLabel:
+        "Open P1 Records",
+      metrics: [
+        {
+          label:
+            "Stage",
+          value:
+            getTraineeStage(
+              reviewRecord
+            ),
+        },
+        {
+          label:
+            "Notebook",
+          value:
+            `${calculateNotebookProgress(
+              reviewRecord.notebook
+            )}%`,
+        },
+      ],
+    };
+  }
+
+  const finalEvaluationRecord =
+    activeTrainees.find(
+      (trainee) =>
+        getTraineeStage(
+          trainee
+        ) ===
+        "Final Evaluation"
+    );
+
+  if (finalEvaluationRecord) {
+    return {
+      officerName:
+        getTraineeName(
+          finalEvaluationRecord
+        ),
+      title:
+        "Final Evaluation Required",
+      detail:
+        "The trainee has reached the Final Evaluation stage and is awaiting management action.",
+      badge:
+        "FINAL EVAL",
+      tone:
+        "amber",
+      traineeId:
+        finalEvaluationRecord.id,
+      actionType:
+        "page",
+      destination:
+        "P1 Records",
+      actionLabel:
+        "Open Evaluation Queue",
+      metrics: [
+        {
+          label:
+            "Stage",
+          value:
+            "Final Evaluation",
+        },
+        {
+          label:
+            "Notebook",
+          value:
+            `${calculateNotebookProgress(
+              finalEvaluationRecord.notebook
+            )}%`,
+        },
+      ],
+    };
+  }
+
+  const readyForFPP =
+    activeTrainees.find(
+      (trainee) => {
+        const stage =
           getTraineeStage(
             trainee
-          ) !== "P2"
-      )
+          );
+
+        const week2Outcome =
+          trainee.week_2_ppower_outcome ??
+          trainee.week2PPOWEROutcome ??
+          null;
+
+        return (
+          stage ===
+            "Week 2" &&
+          calculateNotebookProgress(
+            trainee.notebook
+          ) === 100 &&
+          week2Outcome ===
+            "Satisfactory"
+        );
+      }
+    );
+
+  if (readyForFPP) {
+    return {
+      officerName:
+        getTraineeName(
+          readyForFPP
+        ),
+      title:
+        "Ready for FPP Review",
+      detail:
+        "Week 2 structured learning and PPOWER requirements appear complete. Review the record before progression.",
+      badge:
+        "FPP READY",
+      tone:
+        "green",
+      traineeId:
+        readyForFPP.id,
+      actionType:
+        "page",
+      destination:
+        "P1 Records",
+      actionLabel:
+        "Review Record",
+      metrics: [
+        {
+          label:
+            "Stage",
+          value:
+            "Week 2",
+        },
+        {
+          label:
+            "Notebook",
+          value:
+            "100%",
+        },
+      ],
+    };
+  }
+
+  const fppRecord =
+    activeTrainees.find(
+      (trainee) =>
+        getTraineeStage(
+          trainee
+        ) === "FPP"
+    );
+
+  if (fppRecord) {
+    return {
+      officerName:
+        getTraineeName(
+          fppRecord
+        ),
+      title:
+        "FPP Progress Requires Monitoring",
+      detail:
+        "This trainee is currently in FPP and is closest to the next progression decision.",
+      badge:
+        "FPP",
+      tone:
+        "blue",
+      traineeId:
+        fppRecord.id,
+      actionType:
+        "page",
+      destination:
+        "P1 Records",
+      actionLabel:
+        "Open Record",
+      metrics: [
+        {
+          label:
+            "Stage",
+          value:
+            "FPP",
+        },
+        {
+          label:
+            "Notebook",
+          value:
+            `${calculateNotebookProgress(
+              fppRecord.notebook
+            )}%`,
+        },
+      ],
+    };
+  }
+
+  const closestToCompletion =
+    [...activeTrainees]
       .sort(
         (
           first,
@@ -2677,91 +3155,99 @@ function OfficerSpotlight({
           )
       )[0];
 
-  if (!spotlight) {
-    return (
-      <section style={sidePanelStyle}>
-        <div style={panelHeaderStyle}>
-          <div>
-            <p style={panelEyebrowStyle}>
-              OFFICER IN FOCUS
-            </p>
-
-            <h2 style={sidePanelTitleStyle}>
-              No Active Record
-            </h2>
-          </div>
-        </div>
-
-        <div style={emptyStateStyle}>
-          No active probationer is
-          available for the spotlight.
-        </div>
-      </section>
-    );
+  if (!closestToCompletion) {
+    return null;
   }
 
-  const progress =
-    calculateNotebookProgress(
-      spotlight.notebook
+  return {
+    officerName:
+      getTraineeName(
+        closestToCompletion
+      ),
+    title:
+      "Closest to Structured Learning Completion",
+    detail:
+      "No urgent action is outstanding. This trainee is nearest to completing their notebook.",
+    badge:
+      "MONITOR",
+    tone:
+      "slate",
+    traineeId:
+      closestToCompletion.id,
+    actionType:
+      "page",
+    destination:
+      "P1 Records",
+    actionLabel:
+      "Open Record",
+    metrics: [
+      {
+        label:
+          "Stage",
+        value:
+          getTraineeStage(
+            closestToCompletion
+          ),
+      },
+      {
+        label:
+          "Notebook",
+        value:
+          `${calculateNotebookProgress(
+            closestToCompletion.notebook
+          )}%`,
+      },
+    ],
+  };
+}
+
+function getTraineeName(
+  trainee: any
+) {
+  return (
+    trainee?.profile?.name ??
+    trainee?.name ??
+    "Unknown Officer"
+  );
+}
+
+function getAgeMinutes(
+  value: string | null
+) {
+  if (!value) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.floor(
+      (
+        Date.now() -
+        new Date(
+          value
+        ).getTime()
+      ) /
+      60000
+    )
+  );
+}
+
+function formatPriorityAge(
+  ageMinutes: number
+) {
+  const hours =
+    Math.floor(
+      ageMinutes / 60
     );
 
-  return (
-    <section style={sidePanelStyle}>
-      <div style={panelHeaderStyle}>
-        <div>
-          <p style={panelEyebrowStyle}>
-            OFFICER IN FOCUS
-          </p>
+  const minutes =
+    ageMinutes % 60;
 
-          <h2 style={sidePanelTitleStyle}>
-            {spotlight.profile?.name ??
-              spotlight.name ??
-              "Unknown Officer"}
-          </h2>
-        </div>
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
 
-        <span style={focusStageBadgeStyle}>
-          {getTraineeStage(
-            spotlight
-          )}
-        </span>
-      </div>
-
-      <div style={focusMetricGridStyle}>
-        <MiniMetric
-          label="Notebook"
-          value={`${progress}%`}
-          detail="Structured learning"
-        />
-
-        <MiniMetric
-          label="Status"
-          value={
-            spotlight.status ??
-            "Active"
-          }
-          detail="Current record"
-        />
-      </div>
-
-      <div style={focusProgressTrackStyle}>
-        <div
-          style={{
-            ...focusProgressFillStyle,
-            width:
-              `${progress}%`,
-          }}
-        />
-      </div>
-
-      <p style={focusFooterStyle}>
-        FTM:{" "}
-        {spotlight.ftm?.name ??
-          spotlight.ftm ??
-          "Not assigned"}
-      </p>
-    </section>
-  );
+  return `${hours}h ${minutes}m`;
 }
 
 function RecentActivity({
@@ -3133,15 +3619,22 @@ function QuickActions({
   role,
   trainees,
   openDOR,
+  onNavigate,
 }: {
   role: string;
   trainees: any[];
   openDOR: (
     traineeId: string
   ) => void;
+  onNavigate: (
+    page: string
+  ) => void;
 }) {
   const firstTrainee =
-    trainees[0];
+    trainees.find(
+      (trainee) =>
+        trainee?.id
+    );
 
   const actions: Array<{
     label: string;
@@ -3183,8 +3676,12 @@ function QuickActions({
       label:
         "Review P1 Records",
       detail:
-        "Open a trainee record to manage progression",
+        "Open trainee records and manage progression",
       enabled: true,
+      onClick: () =>
+        onNavigate(
+          "P1 Records"
+        ),
     });
   }
 
@@ -3199,6 +3696,10 @@ function QuickActions({
       detail:
         "Review trainees who have completed FPP requirements",
       enabled: true,
+      onClick: () =>
+        onNavigate(
+          "P1 Records"
+        ),
     });
   }
 
@@ -3213,6 +3714,10 @@ function QuickActions({
       detail:
         "Review accounts, access and linked records",
       enabled: true,
+      onClick: () =>
+        onNavigate(
+          "Personnel Management"
+        ),
     });
   }
 
@@ -3229,6 +3734,15 @@ function QuickActions({
         canViewOwnNotebook(
           role
         ),
+      onClick:
+        canViewOwnNotebook(
+          role
+        )
+          ? () =>
+              onNavigate(
+                "My Notebook"
+              )
+          : undefined,
     });
   }
 
@@ -3250,8 +3764,7 @@ function QuickActions({
         {actions.length ===
         0 ? (
           <div style={emptyStateStyle}>
-            No quick actions are
-            available for this role.
+            No quick actions are available for this role.
           </div>
         ) : (
           actions.map(
@@ -3302,11 +3815,15 @@ function QuickActions({
 function SystemSnapshot({
   role,
   stats,
+  onNavigate,
 }: {
   role: string;
   stats: DashboardStats;
+  onNavigate: (
+    page: string
+  ) => void;
 }) {
-  const rows = [
+  const items = [
     {
       label:
         "Role Requests",
@@ -3317,70 +3834,284 @@ function SystemSnapshot({
           ? String(
               stats.pendingRoleRequests
             )
-          : "—",
+          : "Restricted",
+      detail:
+        canManageRoleRequests(
+          role
+        )
+          ? "Pending FTO access requests"
+          : "Your role cannot manage requests",
+      destination:
+        "Review Centre",
+      enabled:
+        canManageRoleRequests(
+          role
+        ),
+      tone:
+        stats.pendingRoleRequests > 0
+          ? "amber"
+          : "green",
+      icon: "!",
     },
     {
       label:
-        "Calendar Access",
+        "Personnel Records",
+      value:
+        canManagePersonnel(
+          role
+        )
+          ? String(
+              stats.activeTrainees
+            )
+          : "Restricted",
+      detail:
+        canManagePersonnel(
+          role
+        )
+          ? "Active FTP participants"
+          : "Personnel access unavailable",
+      destination:
+        "Personnel Management",
+      enabled:
+        canManagePersonnel(
+          role
+        ),
+      tone:
+        "blue",
+      icon: "♟",
+    },
+    {
+      label:
+        "P1 Records",
+      value:
+        String(
+          stats.activeTrainees
+        ),
+      detail:
+        `${stats.reviewTrainees} marked for review`,
+      destination:
+        "P1 Records",
+      enabled:
+        true,
+      tone:
+        stats.reviewTrainees > 0
+          ? "red"
+          : "green",
+      icon: "◎",
+    },
+    {
+      label:
+        "FTO Records",
+      value:
+        canManageProgression(
+          role
+        )
+          ? "Open"
+          : "View",
+      detail:
+        "Probationary, qualified and archived files",
+      destination:
+        "FTO Records",
+      enabled:
+        canWriteDORs(
+          role
+        ),
+      tone:
+        "violet",
+      icon: "▥",
+    },
+    {
+      label:
+        "Training Calendar",
       value:
         canEditCalendar(
           role
         )
           ? "Editor"
           : "Viewer",
+      detail:
+        "Batch dates and programme milestones",
+      destination:
+        "Batch Management",
+      enabled:
+        canEditCalendar(
+          role
+        ) ||
+        canManageProgression(
+          role
+        ),
+      tone:
+        "blue",
+      icon: "□",
     },
     {
       label:
-        "Personnel Access",
+        "Audit Centre",
       value:
+        canManageProgression(
+          role
+        ) ||
         canManagePersonnel(
           role
         )
-          ? "Enabled"
+          ? "Available"
           : "Restricted",
+      detail:
+        "Review recorded system activity",
+      destination:
+        "Audit Centre",
+      enabled:
+        canManageProgression(
+          role
+        ) ||
+        canManagePersonnel(
+          role
+        ),
+      tone:
+        "slate",
+      icon: "◇",
     },
     {
       label:
-        "Promotion Access",
+        "Settings",
       value:
-        canPromoteToP2(
-          role
-        )
-          ? "Enabled"
-          : "Restricted",
+        "Open",
+      detail:
+        "Profile, account and application information",
+      destination:
+        "Settings",
+      enabled:
+        true,
+      tone:
+        "slate",
+      icon: "⚙",
     },
   ];
+
+  const enabledCount =
+    items.filter(
+      (item) =>
+        item.enabled
+    ).length;
 
   return (
     <section style={sidePanelStyle}>
       <div style={panelHeaderStyle}>
         <div>
           <p style={panelEyebrowStyle}>
-            ACCESS CONTROL
+            ADMINISTRATION
           </p>
 
           <h2 style={sidePanelTitleStyle}>
             System Snapshot
           </h2>
         </div>
+
+        <span style={systemAccessBadgeStyle}>
+          {enabledCount}/{items.length} AREAS
+        </span>
       </div>
 
-      <div style={snapshotListStyle}>
-        {rows.map(
-          (row) => (
-            <div
-              key={row.label}
-              style={snapshotRowStyle}
-            >
-              <span style={snapshotLabelStyle}>
-                {row.label}
-              </span>
+      <div style={systemStatusBannerStyle}>
+        <div>
+          <span style={systemStatusLabelStyle}>
+            SYSTEM STATUS
+          </span>
 
-              <strong>
-                {row.value}
-              </strong>
-            </div>
-          )
+          <strong style={systemStatusValueStyle}>
+            ● Operational
+          </strong>
+        </div>
+
+        <div style={systemStatusDividerStyle} />
+
+        <div>
+          <span style={systemStatusLabelStyle}>
+            CURRENT ACCESS
+          </span>
+
+          <strong style={systemStatusRoleStyle}>
+            {getRoleDisplayName(
+              role
+            )}
+          </strong>
+        </div>
+      </div>
+
+      <div style={systemLinkGridStyle}>
+        {items.map(
+          (item) => {
+            const tone =
+              getToneStyle(
+                item.tone
+              );
+
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => {
+                  if (
+                    item.enabled
+                  ) {
+                    onNavigate(
+                      item.destination
+                    );
+                  }
+                }}
+                disabled={
+                  !item.enabled
+                }
+                style={{
+                  ...systemLinkCardStyle,
+                  opacity:
+                    item.enabled
+                      ? 1
+                      : 0.5,
+                  cursor:
+                    item.enabled
+                      ? "pointer"
+                      : "not-allowed",
+                }}
+              >
+                <div
+                  style={{
+                    ...systemLinkIconStyle,
+                    color:
+                      tone.text,
+                    backgroundColor:
+                      tone.background,
+                    borderColor:
+                      tone.border,
+                  }}
+                >
+                  {item.icon}
+                </div>
+
+                <div style={systemLinkContentStyle}>
+                  <div style={systemLinkTopStyle}>
+                    <strong>
+                      {item.label}
+                    </strong>
+
+                    <span style={systemLinkValueStyle}>
+                      {item.value}
+                    </span>
+                  </div>
+
+                  <p style={systemLinkDetailStyle}>
+                    {item.detail}
+                  </p>
+                </div>
+
+                <span style={systemLinkArrowStyle}>
+                  {item.enabled
+                    ? "→"
+                    : "—"}
+                </span>
+              </button>
+            );
+          }
         )}
       </div>
     </section>
@@ -4575,24 +5306,117 @@ const quickActionArrowStyle = {
   fontSize: "17px",
 };
 
-const snapshotListStyle = {
-  display: "grid",
-  gap: "9px",
+const systemAccessBadgeStyle = {
+  padding: "5px 8px",
+  color: "#bfdbfe",
+  backgroundColor:
+    "rgba(30, 64, 175, 0.24)",
+  border:
+    "1px solid #2563eb",
+  borderRadius: "999px",
+  fontSize: "8px",
+  fontWeight: 900,
+  letterSpacing: "0.06em",
 };
 
-const snapshotRowStyle = {
-  display: "flex",
-  justifyContent:
-    "space-between",
+const systemStatusBannerStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0, 1fr) 1px minmax(0, 1fr)",
+  alignItems: "center",
   gap: "12px",
-  paddingBottom: "9px",
-  borderBottom:
-    "1px solid #263248",
+  padding: "13px",
+  marginBottom: "12px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #263248",
+  borderRadius: "10px",
+};
+
+const systemStatusLabelStyle = {
+  display: "block",
+  marginBottom: "5px",
+  color: "#64748b",
+  fontSize: "7px",
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+};
+
+const systemStatusValueStyle = {
+  color: "#86efac",
   fontSize: "10px",
 };
 
-const snapshotLabelStyle = {
+const systemStatusRoleStyle = {
+  color: "#e2e8f0",
+  fontSize: "10px",
+};
+
+const systemStatusDividerStyle = {
+  width: "1px",
+  height: "30px",
+  backgroundColor: "#263248",
+};
+
+const systemLinkGridStyle = {
+  display: "grid",
+  gap: "8px",
+};
+
+const systemLinkCardStyle = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns:
+    "32px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "10px",
+  padding: "11px",
+  color: "white",
+  textAlign: "left" as const,
+  backgroundColor: "#0f172a",
+  border: "1px solid #263248",
+  borderRadius: "9px",
+  fontFamily: "inherit",
+};
+
+const systemLinkIconStyle = {
+  width: "30px",
+  height: "30px",
+  display: "grid",
+  placeItems: "center",
+  border: "1px solid",
+  borderRadius: "8px",
+  fontSize: "10px",
+  fontWeight: 900,
+};
+
+const systemLinkContentStyle = {
+  minWidth: 0,
+};
+
+const systemLinkTopStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  fontSize: "10px",
+};
+
+const systemLinkValueStyle = {
+  color: "#bfdbfe",
+  whiteSpace: "nowrap" as const,
+  fontSize: "9px",
+  fontWeight: 900,
+};
+
+const systemLinkDetailStyle = {
+  margin: "4px 0 0",
   color: "#64748b",
+  fontSize: "8px",
+  lineHeight: 1.4,
+};
+
+const systemLinkArrowStyle = {
+  color: "#60a5fa",
+  fontSize: "15px",
 };
 
 const emptyStateStyle = {
@@ -4665,6 +5489,104 @@ const trendLabelStyle = {
   color: "#64748b",
   textAlign: "center" as const,
   fontSize: "8px",
+};
+
+const priorityClearBadgeStyle = {
+  padding: "5px 8px",
+  color: "#86efac",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.28)",
+  border:
+    "1px solid #166534",
+  borderRadius: "999px",
+  fontSize: "8px",
+  fontWeight: 900,
+};
+
+const priorityClearStateStyle = {
+  padding: "15px",
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.22)",
+  border:
+    "1px solid #166534",
+  borderRadius: "10px",
+};
+
+const priorityLevelBadgeStyle = {
+  padding: "5px 8px",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderRadius: "999px",
+  fontSize: "8px",
+  fontWeight: 900,
+  letterSpacing: "0.05em",
+};
+
+const prioritySummaryStyle = {
+  padding: "15px",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderRadius: "11px",
+};
+
+const priorityTitleStyle = {
+  color: "#f8fafc",
+  fontSize: "13px",
+  lineHeight: 1.4,
+};
+
+const priorityDetailStyle = {
+  margin: "7px 0 0",
+  color: "#94a3b8",
+  fontSize: "10px",
+  lineHeight: 1.55,
+};
+
+const priorityMetricGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(2, minmax(0, 1fr))",
+  gap: "9px",
+  marginTop: "11px",
+};
+
+const priorityMetricStyle = {
+  display: "grid",
+  gap: "6px",
+  padding: "11px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #263248",
+  borderRadius: "9px",
+};
+
+const priorityMetricLabelStyle = {
+  color: "#64748b",
+  fontSize: "8px",
+  fontWeight: 900,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase" as const,
+};
+
+const priorityMetricValueStyle = {
+  color: "#f8fafc",
+  fontSize: "13px",
+};
+
+const priorityActionButtonStyle = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "12px 13px",
+  marginTop: "11px",
+  color: "white",
+  backgroundColor: "#2563eb",
+  border: "none",
+  borderRadius: "9px",
+  cursor: "pointer",
+  fontWeight: 900,
 };
 
 const focusStageBadgeStyle = {
