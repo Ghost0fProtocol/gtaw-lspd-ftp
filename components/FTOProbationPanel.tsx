@@ -329,13 +329,15 @@ export default function FTOProbationPanel({
     }
   }
 
-  const reviewedCount =
+  const completedPatrolCount =
     useMemo(
       () =>
         patrols.filter(
           (patrol) =>
             patrol.status ===
-            "reviewed"
+              "submitted" ||
+            patrol.status ===
+              "reviewed"
         ).length,
       [patrols]
     );
@@ -345,7 +347,7 @@ export default function FTOProbationPanel({
 
   const finalUnlocked =
     requiredPatrolCount >= 3 &&
-    reviewedCount ===
+    completedPatrolCount ===
       requiredPatrolCount;
 
   function openReport(
@@ -624,7 +626,7 @@ ${probationaryOfficerFeedback.trim()}
   async function completeFinalEvaluation() {
     if (!finalUnlocked) {
       setError(
-        "Every probation patrol must be reviewed before the Final Evaluation can be completed."
+        "Every probation patrol must be submitted before the Final Evaluation can be completed."
       );
       return;
     }
@@ -847,7 +849,7 @@ ${probationaryOfficerFeedback.trim()}
         ? "Archived"
         : finalUnlocked
           ? "Final Evaluation Ready"
-          : `${reviewedCount}/${requiredPatrolCount} Patrols Reviewed`;
+          : `${completedPatrolCount}/${requiredPatrolCount} Patrols Completed`;
 
   return (
     <div style={cardStyle}>
@@ -909,8 +911,8 @@ ${probationaryOfficerFeedback.trim()}
         <>
           <div style={progressSummaryStyle}>
         <Detail
-          label="Reviewed Patrols"
-          value={`${reviewedCount}/${requiredPatrolCount}`}
+          label="Completed Patrols"
+          value={`${completedPatrolCount}/${requiredPatrolCount}`}
         />
 
         <Detail
@@ -963,35 +965,20 @@ ${probationaryOfficerFeedback.trim()}
                 <p style={mutedStyle}>
                   {patrol.status ===
                   "reviewed"
-                    ? `Reviewed ${formatDateTime(
-                        patrol.reviewed_at
+                    ? `Completed ${formatDateTime(
+                        patrol.reviewed_at ??
+                        patrol.submitted_at
                       )}`
                     : patrol.status ===
                         "submitted"
-                      ? `Submitted ${formatDateTime(
+                      ? `Completed ${formatDateTime(
                           patrol.submitted_at
                         )}`
-                      : "Awaiting patrol review"}
+                      : "Awaiting submitted patrol"}
                 </p>
 
-                <div style={buttonRowStyle}>
-                  {canManage && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openReport(
-                          patrol
-                        )
-                      }
-                      style={primaryButtonStyle}
-                    >
-                      {report
-                        ? "Edit Observation Report"
-                        : "Conduct Patrol Review"}
-                    </button>
-                  )}
-
-                  {report && (
+                {report && (
+                  <div style={buttonRowStyle}>
                     <button
                       type="button"
                       onClick={() =>
@@ -1003,8 +990,8 @@ ${probationaryOfficerFeedback.trim()}
                     >
                       Copy BBCode
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             );
           }
@@ -1020,13 +1007,13 @@ ${probationaryOfficerFeedback.trim()}
           <h3 style={finalTitleStyle}>
             {finalUnlocked
               ? "Ready"
-              : `Locked · ${reviewedCount}/${requiredPatrolCount} patrols reviewed`}
+              : `Locked · ${completedPatrolCount}/${requiredPatrolCount} patrols completed`}
           </h3>
 
           <p style={mutedStyle}>
             {finalUnlocked
               ? "An FTM+ may now record the final outcome."
-              : "Every current probation patrol must be reviewed first."}
+              : "Every current probation patrol must be submitted first."}
           </p>
         </div>
 
@@ -1398,7 +1385,7 @@ function PatrolBadge({
       {status ===
       "not_started"
         ? "NOT STARTED"
-        : status.toUpperCase()}
+        : "COMPLETED"}
     </span>
   );
 }

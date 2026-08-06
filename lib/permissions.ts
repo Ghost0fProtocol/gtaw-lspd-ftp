@@ -71,7 +71,6 @@ const permissionMap:
       "manageProgression",
       "conductFinalEvaluation",
       "viewCalendar",
-      "manageRoleRequests",
       "manageFTP",
     ],
 
@@ -367,7 +366,8 @@ export function getSidebarMenuItems(
     canWriteDORs(role)
   ) {
     menuItems.push(
-      "Daily Observation Reports"
+      "Daily Observation Reports",
+      "Orientation Patrols"
     );
   }
 
@@ -391,15 +391,15 @@ export function getSidebarMenuItems(
     canManageFTP(role)
   ) {
     menuItems.push(
-      "Field Training Management Dashboard"
+      "FTP Management"
     );
   }
 
   if (
-    canEditCalendar(role)
+    canViewCalendar(role)
   ) {
     menuItems.push(
-      "Batch Management"
+      "Training Calendar"
     );
   }
 

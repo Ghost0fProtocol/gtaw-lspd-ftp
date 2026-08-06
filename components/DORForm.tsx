@@ -553,10 +553,6 @@ export default function DORForm({
             )
             .select(
               "trainee_id"
-            )
-            .eq(
-              "status",
-              "approved"
             ),
         ]);
 

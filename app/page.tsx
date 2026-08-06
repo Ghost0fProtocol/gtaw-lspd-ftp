@@ -23,6 +23,7 @@ import Sidebar from "../components/Sidebar";
 import Dashboard from "../components/Dashboard";
 import Records from "../components/Records";
 import DORForm from "../components/DORForm";
+import OrientationForm from "../components/OrientationForm";
 import Settings from "../components/Settings";
 import MyNotebook from "../components/MyNotebook";
 import MyFTOFile from "../components/MyFTOFile";
@@ -676,6 +677,11 @@ export default function Home() {
               undefined
             }
           />
+        );
+
+      case "Orientation Patrols":
+        return (
+          <OrientationForm />
         );
 
       case "Records":

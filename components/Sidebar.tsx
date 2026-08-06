@@ -59,6 +59,7 @@ const menuSections: MenuSection[] = [
     label: "Training Operations",
     items: [
       "Daily Observation Reports",
+      "Orientation Patrols",
       "P1 Records",
       "My Notebook",
       "My FTO File",
@@ -89,6 +90,7 @@ const menuIcons:
   Record<string, string> = {
     Dashboard: "⌂",
     "Daily Observation Reports": "▣",
+    "Orientation Patrols": "◫",
     "P1 Records": "◎",
     "My Notebook": "▤",
     "My FTO File": "▱",
