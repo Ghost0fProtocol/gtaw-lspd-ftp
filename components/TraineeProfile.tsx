@@ -92,6 +92,17 @@ type PPOWERRecord = {
   ftmName: string;
 };
 
+type DatabaseNotebookItem = {
+  id: string;
+  trainee_id: string;
+  section: string;
+  item_label: string;
+  completed: boolean;
+  completion_date?: string | null;
+  evidence_link?: string | null;
+  completion_source?: string | null;
+};
+
 
 const evaluationLabels:
   Record<string, string> = {
@@ -224,6 +235,21 @@ export default function TraineeProfile({
   ] = useState("");
 
   const [
+    notebookItems,
+    setNotebookItems,
+  ] = useState<DatabaseNotebookItem[]>([]);
+
+  const [
+    loadingNotebook,
+    setLoadingNotebook,
+  ] = useState(true);
+
+  const [
+    notebookError,
+    setNotebookError,
+  ] = useState("");
+
+  const [
     progressionBusy,
     setProgressionBusy,
   ] = useState(false);
@@ -264,36 +290,67 @@ export default function TraineeProfile({
 
     loadDORs();
     loadPPOWERs();
+    loadNotebookItems();
   }, [trainee]);
 
-  function calculateProgress(
-    notebook:
-      NotebookSection[]
-  ) {
-    const items =
-      notebook.flatMap(
-        (section) =>
-          section.items
+  async function loadNotebookItems() {
+    setLoadingNotebook(true);
+    setNotebookError("");
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("notebook_items")
+        .select(`
+          id,
+          trainee_id,
+          section,
+          item_label,
+          completed,
+          completion_date,
+          evidence_link,
+          completion_source
+        `)
+        .eq(
+          "trainee_id",
+          trainee.id
+        )
+        .order(
+          "section",
+          {
+            ascending: true,
+          }
+        )
+        .order(
+          "item_label",
+          {
+            ascending: true,
+          }
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setNotebookItems(
+        (data ?? []) as DatabaseNotebookItem[]
+      );
+    } catch (error) {
+      console.error(
+        "NOTEBOOK ITEMS LOAD ERROR",
+        error
       );
 
-    if (
-      items.length === 0
-    ) {
-      return 0;
+      setNotebookError(
+        error instanceof Error
+          ? error.message
+          : "The structured learning checklist could not be loaded."
+      );
+    } finally {
+      setLoadingNotebook(false);
     }
-
-    const completed =
-      items.filter(
-        (item) =>
-          item.completed
-      ).length;
-
-    return Math.round(
-      (
-        completed /
-        items.length
-      ) * 100
-    );
   }
 
   async function loadDORs() {
@@ -574,161 +631,6 @@ export default function TraineeProfile({
     } catch (error) {
       console.error(
         "Failed saving profile:",
-        error
-      );
-    }
-  }
-
-  async function toggleNotebookItem(
-    sectionName: string,
-    itemId: string
-  ) {
-    const currentNotebook =
-      trainee.notebook ??
-      [];
-
-    const currentSection =
-      currentNotebook.find(
-        (section) =>
-          section.section ===
-          sectionName
-      );
-
-    const currentItem =
-      currentSection?.items.find(
-        (item) =>
-          item.id ===
-          itemId
-      );
-
-    if (!currentItem) {
-      return;
-    }
-
-    const nextCompleted =
-      !currentItem.completed;
-
-    const updatedNotebook =
-      currentNotebook.map(
-        (section) => {
-          if (
-            section.section !==
-            sectionName
-          ) {
-            return section;
-          }
-
-          return {
-            ...section,
-            items:
-              section.items.map(
-                (item) => {
-                  if (
-                    item.id !==
-                    itemId
-                  ) {
-                    return item;
-                  }
-
-                  return {
-                    ...item,
-                    completed:
-                      nextCompleted,
-                  };
-                }
-              ),
-          };
-        }
-      );
-
-    const updatedTrainee = {
-      ...trainee,
-      notebook:
-        updatedNotebook,
-      progress:
-        calculateProgress(
-          updatedNotebook
-        ),
-    };
-
-    try {
-      await auditAction({
-        user,
-
-        action:
-          nextCompleted
-            ? "COMPLETE_NOTEBOOK_ITEM"
-            : "UNCOMPLETE_NOTEBOOK_ITEM",
-
-        category:
-          "Notebook",
-
-        entityType:
-          "trainee",
-
-        entityId:
-          trainee.id,
-
-        targetName:
-          trainee.name,
-
-        oldData: {
-          section:
-            sectionName,
-
-          item_id:
-            itemId,
-
-          item_label:
-            currentItem.label,
-
-          completed:
-            currentItem.completed,
-
-          progress:
-            trainee.progress,
-        },
-
-        newData: {
-          section:
-            sectionName,
-
-          item_id:
-            itemId,
-
-          item_label:
-            currentItem.label,
-
-          completed:
-            nextCompleted,
-
-          progress:
-            updatedTrainee.progress,
-        },
-
-        execute:
-          async () => {
-            await updateTrainee(
-              trainee.id,
-              {
-                notebook:
-                  updatedNotebook,
-              }
-            );
-
-            return {
-              notebook:
-                updatedNotebook,
-            };
-          },
-      });
-
-      onUpdate(
-        updatedTrainee
-      );
-    } catch (error) {
-      console.error(
-        "Failed updating notebook:",
         error
       );
     }
@@ -1143,8 +1045,62 @@ const canPromoteToP2 = [
         isCleanDOR(dor)
     );
 
+  const progressEligibleNotebookItems =
+    notebookItems.filter(
+      (item) =>
+        !isMandatoryCourseItem(
+          item.item_label
+        )
+    );
+
+  const completedNotebookItems =
+    progressEligibleNotebookItems.filter(
+      (item) =>
+        item.completed
+    ).length;
+
+  const checklistProgress =
+    progressEligibleNotebookItems.length >
+      0
+      ? Math.round(
+          (
+            completedNotebookItems /
+            progressEligibleNotebookItems.length
+          ) * 100
+        )
+      : 0;
+
   const checklistComplete =
-    trainee.progress === 100;
+    progressEligibleNotebookItems.length >
+      0 &&
+    progressEligibleNotebookItems.every(
+      (item) =>
+        item.completed
+    );
+
+  const notebookSections =
+    notebookItems.reduce(
+      (
+        result,
+        item
+      ) => {
+        if (
+          !result[item.section]
+        ) {
+          result[item.section] = [];
+        }
+
+        result[item.section].push(
+          item
+        );
+
+        return result;
+      },
+      {} as Record<
+        string,
+        DatabaseNotebookItem[]
+      >
+    );
 
   const fppEligible =
     trainee.week2PPOWEROutcome ===
@@ -1371,7 +1327,7 @@ const canPromoteToP2 = [
           </h3>
 
           <p style={nextActionTextStyle}>
-            Checklist: {trainee.progress}% complete
+            Checklist: {checklistProgress}% complete
             {" • "}
             Clean submitted DORs: {cleanSubmittedDORs.length}
           </p>
@@ -1633,63 +1589,122 @@ const canPromoteToP2 = [
       </div>
 
       <div style={cardStyle}>
-        <h3>
-          Structured Learning
-          Checklist
-        </h3>
-
-        {(trainee.notebook ??
-          []).map(
-          (section) => (
-            <div
-              key={
-                section.section
-              }
+        <div style={sectionHeaderStyle}>
+          <div>
+            <h3
               style={{
-                marginBottom:
-                  "20px",
+                margin:
+                  "0 0 6px",
               }}
             >
-              <h4
-                style={{
-                  color:
-                    "#93c5fd",
-                }}
-              >
-                {
-                  section.section
-                }
-              </h4>
+              Structured Learning
+              Checklist
+            </h3>
 
-              {section.items.map(
-                (item) => (
-                  <label
-                    key={item.id}
-                    style={
-                      checklistItemStyle
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        item.completed
-                      }
-                      onChange={() =>
-                        toggleNotebookItem(
-                          section.section,
-                          item.id
-                        )
-                      }
-                    />
+            <p
+              style={{
+                ...mutedStyle,
+                margin: 0,
+              }}
+            >
+              This is a read-only training record. Learning goals are completed through DORs or an audited management override.
+            </p>
+          </div>
 
-                    {" "}
+          <span style={countBadgeStyle}>
+            {checklistProgress}% COMPLETE
+          </span>
+        </div>
 
-                    {item.label}
-                  </label>
-                )
-              )}
-            </div>
-          )
+        {loadingNotebook ? (
+          <p style={mutedStyle}>
+            Loading structured learning checklist...
+          </p>
+        ) : notebookError ? (
+          <div style={errorBoxStyle}>
+            Unable to load checklist: {notebookError}
+          </div>
+        ) : notebookItems.length ===
+          0 ? (
+          <div style={emptyStateStyle}>
+            No structured learning items were found.
+          </div>
+        ) : (
+          <div style={readOnlyChecklistStyle}>
+            {Object.entries(
+              notebookSections
+            ).map(
+              ([
+                section,
+                sectionItems,
+              ]) => (
+                <section
+                  key={section}
+                  style={checklistSectionStyle}
+                >
+                  <h4 style={checklistSectionTitleStyle}>
+                    {section}
+                  </h4>
+
+                  <div style={checklistRowsStyle}>
+                    {sectionItems.map(
+                      (item) => (
+                        <div
+                          key={item.id}
+                          style={readOnlyChecklistItemStyle}
+                        >
+                          <span
+                            style={
+                              item.completed
+                                ? completedStatusIconStyle
+                                : pendingStatusIconStyle
+                            }
+                          >
+                            {item.completed
+                              ? "✓"
+                              : "○"}
+                          </span>
+
+                          <div style={checklistItemCopyStyle}>
+                            <strong>
+                              {item.item_label}
+                            </strong>
+
+                            <span style={checklistStatusTextStyle}>
+                              {item.completed
+                                ? "Completed"
+                                : "Outstanding"}
+                            </span>
+
+                            {item.completed &&
+                              item.completion_date && (
+                                <span style={checklistEvidenceStyle}>
+                                  Completed {formatDate(
+                                    item.completion_date
+                                  )}
+                                </span>
+                              )}
+
+                            {item.completed &&
+                              item.evidence_link && (
+                                <a
+                                  href={item.evidence_link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={evidenceLinkStyle}
+                                >
+                                  View course evidence ↗
+                                </a>
+                              )}
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </section>
+              )
+            )}
+          </div>
         )}
       </div>
 
@@ -2483,6 +2498,18 @@ function ReportSection({
   );
 }
 
+function isMandatoryCourseItem(
+  label: string
+) {
+  const normalised =
+    label.toUpperCase();
+
+  return (
+    normalised.includes("(BFA)") ||
+    normalised.includes("(EVOC)")
+  );
+}
+
 function traineeProgressionSnapshot(
   trainee: Trainee
 ) {
@@ -2924,10 +2951,86 @@ const infoGridStyle = {
   gap: "20px",
 };
 
-const checklistItemStyle = {
-  display: "block",
-  marginBottom: "8px",
-  cursor: "pointer",
+const readOnlyChecklistStyle = {
+  display: "grid",
+  gap: "18px",
+};
+
+const checklistSectionStyle = {
+  padding: "18px",
+  backgroundColor: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const checklistSectionTitleStyle = {
+  margin: "0 0 14px",
+  color: "#93c5fd",
+  fontSize: "13px",
+  letterSpacing: "0.04em",
+  textTransform: "uppercase" as const,
+};
+
+const checklistRowsStyle = {
+  display: "grid",
+  gap: "9px",
+};
+
+const readOnlyChecklistItemStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "12px",
+  padding: "12px",
+  backgroundColor: "#111827",
+  border: "1px solid #26354b",
+  borderRadius: "8px",
+};
+
+const completedStatusIconStyle = {
+  width: "25px",
+  height: "25px",
+  display: "grid",
+  placeItems: "center",
+  flexShrink: 0,
+  color: "#bbf7d0",
+  backgroundColor: "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "999px",
+  fontWeight: 900,
+};
+
+const pendingStatusIconStyle = {
+  width: "25px",
+  height: "25px",
+  display: "grid",
+  placeItems: "center",
+  flexShrink: 0,
+  color: "#94a3b8",
+  backgroundColor: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: "999px",
+  fontWeight: 900,
+};
+
+const checklistItemCopyStyle = {
+  display: "grid",
+  gap: "4px",
+};
+
+const checklistStatusTextStyle = {
+  color: "#94a3b8",
+  fontSize: "12px",
+};
+
+const checklistEvidenceStyle = {
+  color: "#cbd5e1",
+  fontSize: "12px",
+};
+
+const evidenceLinkStyle = {
+  color: "#60a5fa",
+  fontSize: "12px",
+  textDecoration: "none",
 };
 
 const sectionHeaderStyle = {

@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  supabase,
+} from "../lib/supabase";
 
 type Props = {
   batchId: string;
@@ -20,26 +26,57 @@ type Assignment = {
   profile: Profile | null;
 };
 
+const ELIGIBLE_FTM_ROLES = [
+  "Field Training Manager",
+  "Field Training Supervisor",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
+];
+
 export default function FTMAssignmentPanel({
   batchId,
 }: Props) {
-  const [assignments, setAssignments] =
-    useState<Assignment[]>([]);
+  const [
+    assignments,
+    setAssignments,
+  ] = useState<
+    Assignment[]
+  >([]);
 
-  const [availableFTMs, setAvailableFTMs] =
-    useState<Profile[]>([]);
+  const [
+    availableFTMs,
+    setAvailableFTMs,
+  ] = useState<
+    Profile[]
+  >([]);
 
-  const [selectedFTM, setSelectedFTM] =
-    useState("");
+  const [
+    selectedFTM,
+    setSelectedFTM,
+  ] = useState("");
 
-  const [assignmentType, setAssignmentType] =
-    useState("Primary");
+  const [
+    assignmentType,
+    setAssignmentType,
+  ] = useState(
+    "Primary"
+  );
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
 
   useEffect(() => {
     void loadData();
@@ -49,9 +86,16 @@ export default function FTMAssignmentPanel({
     setLoading(true);
     setError("");
 
-    const { data: assignmentData, error: assignmentError } =
-      await supabase
-        .from("ftp_batch_ftm_assignments")
+    try {
+      const {
+        data:
+          assignmentData,
+        error:
+          assignmentError,
+      } = await supabase
+        .from(
+          "ftp_batch_ftm_assignments"
+        )
         .select(`
           id,
           assignment_type,
@@ -62,14 +106,23 @@ export default function FTMAssignmentPanel({
             role
           )
         `)
-        .eq("batch_id", batchId);
+        .eq(
+          "batch_id",
+          batchId
+        );
 
-    if (assignmentError) {
-      setError(assignmentError.message);
-    }
+      if (
+        assignmentError
+      ) {
+        throw assignmentError;
+      }
 
-    const { data: ftmData } =
-      await supabase
+      const {
+        data:
+          ftmData,
+        error:
+          ftmError,
+      } = await supabase
         .from("profiles")
         .select(`
           id,
@@ -77,83 +130,219 @@ export default function FTMAssignmentPanel({
           badge_number,
           role
         `)
-        .in("role", [
-          "Field Training Manager",
-          "Field Training Supervisor",
-          "STAFF",
-          "LSPD STAFF",
-        ]);
+        .in(
+          "role",
+          ELIGIBLE_FTM_ROLES
+        )
+        .order(
+          "name",
+          {
+            ascending: true,
+          }
+        );
 
-    setAssignments(
-      (assignmentData ?? []).map((item: any) => ({
-        id: item.id,
-        assignment_type: item.assignment_type,
-        profile: Array.isArray(item.profile)
-          ? item.profile[0] ?? null
-          : item.profile ?? null,
-      }))
-    );
+      if (ftmError) {
+        throw ftmError;
+      }
 
-    setAvailableFTMs(
-      (ftmData ?? []) as Profile[]
-    );
+      setAssignments(
+        (
+          assignmentData ??
+          []
+        ).map(
+          (
+            item: any
+          ) => ({
+            id:
+              item.id,
 
-    setLoading(false);
+            assignment_type:
+              item.assignment_type,
+
+            profile:
+              Array.isArray(
+                item.profile
+              )
+                ? item
+                    .profile[0] ??
+                  null
+                : item
+                    .profile ??
+                  null,
+          })
+        )
+      );
+
+      setAvailableFTMs(
+        (
+          ftmData ??
+          []
+        ) as Profile[]
+      );
+    } catch (loadError) {
+      console.error(
+        "FTM ASSIGNMENT LOAD ERROR",
+        loadError
+      );
+
+      setError(
+        loadError instanceof
+          Error
+          ? loadError.message
+          : "The FTM assignment information could not be loaded."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function addAssignment() {
-    if (!selectedFTM) return;
+    if (
+      !selectedFTM ||
+      saving
+    ) {
+      return;
+    }
 
     if (
-      assignmentType === "Primary" &&
+      assignmentType ===
+        "Primary" &&
       assignments.some(
         (item) =>
-          item.assignment_type === "Primary"
+          item
+            .assignment_type ===
+          "Primary"
       )
     ) {
       setError(
         "This batch already has a Primary FTM."
       );
+
       return;
     }
 
     if (
       assignments.some(
         (item) =>
-          item.profile?.id === selectedFTM
+          item.profile
+            ?.id ===
+          selectedFTM
       )
     ) {
       setError(
-        "This FTM is already assigned."
+        "This person is already assigned to the batch."
       );
+
       return;
     }
 
-    const { error: insertError } =
-      await supabase
-        .from("ftp_batch_ftm_assignments")
+    setSaving(true);
+    setError("");
+
+    try {
+      const {
+        error:
+          insertError,
+      } = await supabase
+        .from(
+          "ftp_batch_ftm_assignments"
+        )
         .insert({
-          batch_id: batchId,
-          ftm_profile_id: selectedFTM,
-          assignment_type: assignmentType,
+          batch_id:
+            batchId,
+
+          ftm_profile_id:
+            selectedFTM,
+
+          assignment_type:
+            assignmentType,
         });
 
-    if (insertError) {
-      setError(insertError.message);
+      if (
+        insertError
+      ) {
+        throw insertError;
+      }
+
+      setSelectedFTM("");
+
+      await loadData();
+    } catch (
+      assignmentError
+    ) {
+      console.error(
+        "FTM ASSIGNMENT ERROR",
+        assignmentError
+      );
+
+      setError(
+        assignmentError instanceof
+          Error
+          ? assignmentError.message
+          : "The FTM could not be assigned."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeAssignment(
+    id: string
+  ) {
+    if (saving) {
       return;
     }
 
-    setSelectedFTM("");
-    await loadData();
-  }
+    const confirmed =
+      window.confirm(
+        "Remove this FTM assignment?"
+      );
 
-  async function removeAssignment(id: string) {
-    await supabase
-      .from("ftp_batch_ftm_assignments")
-      .delete()
-      .eq("id", id);
+    if (!confirmed) {
+      return;
+    }
 
-    await loadData();
+    setSaving(true);
+    setError("");
+
+    try {
+      const {
+        error:
+          deleteError,
+      } = await supabase
+        .from(
+          "ftp_batch_ftm_assignments"
+        )
+        .delete()
+        .eq(
+          "id",
+          id
+        );
+
+      if (
+        deleteError
+      ) {
+        throw deleteError;
+      }
+
+      await loadData();
+    } catch (
+      removalError
+    ) {
+      console.error(
+        "FTM ASSIGNMENT REMOVAL ERROR",
+        removalError
+      );
+
+      setError(
+        removalError instanceof
+          Error
+          ? removalError.message
+          : "The FTM assignment could not be removed."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -171,13 +360,24 @@ export default function FTMAssignmentPanel({
           <p style={eyebrowStyle}>
             BATCH MANAGEMENT
           </p>
+
           <h2 style={titleStyle}>
             FTM Oversight
           </h2>
+
           <p style={subtitleStyle}>
-            Assign management responsibility for this FTP intake.
+            Assign management
+            responsibility for this
+            FTP intake.
           </p>
         </div>
+
+        <span style={countBadgeStyle}>
+          {
+            assignments.length
+          }{" "}
+          assigned
+        </span>
       </div>
 
       {error && (
@@ -187,52 +387,98 @@ export default function FTMAssignmentPanel({
       )}
 
       <div style={assignmentGrid}>
-        {assignments.length === 0 && (
+        {assignments.length ===
+          0 && (
           <div style={emptyStyle}>
-            No FTMs assigned to this batch.
+            No FTMs or senior
+            FTP staff are assigned
+            to this batch.
           </div>
         )}
 
-        {assignments.map((assignment) => (
-          <div
-            key={assignment.id}
-            style={assignmentCard}
-          >
-            <div>
-              <span style={badgeStyle}>
-                {assignment.assignment_type}
-              </span>
-
-              <h3 style={nameStyle}>
-                {assignment.profile?.name ??
-                  "Unknown"}
-              </h3>
-
-              <p style={detailStyle}>
-                {assignment.profile?.role ??
-                  "Unknown role"}
-              </p>
-
-              {assignment.profile?.badge_number && (
-                <p style={detailStyle}>
-                  Badge: {assignment.profile.badge_number}
-                </p>
-              )}
-            </div>
-
-            <button
-              style={removeButton}
-              type="button"
-              onClick={() =>
-                void removeAssignment(
-                  assignment.id
-                )
+        {assignments.map(
+          (assignment) => (
+            <div
+              key={
+                assignment.id
+              }
+              style={
+                assignmentCard
               }
             >
-              Remove
-            </button>
-          </div>
-        ))}
+              <div>
+                <span
+                  style={
+                    badgeStyle
+                  }
+                >
+                  {
+                    assignment
+                      .assignment_type
+                  }
+                </span>
+
+                <h3
+                  style={
+                    nameStyle
+                  }
+                >
+                  {assignment
+                    .profile
+                    ?.name ??
+                    "Unknown"}
+                </h3>
+
+                <p
+                  style={
+                    detailStyle
+                  }
+                >
+                  {assignment
+                    .profile
+                    ?.role ??
+                    "Unknown role"}
+                </p>
+
+                {assignment
+                  .profile
+                  ?.badge_number && (
+                  <p
+                    style={
+                      detailStyle
+                    }
+                  >
+                    Badge:{" "}
+                    {
+                      assignment
+                        .profile
+                        .badge_number
+                    }
+                  </p>
+                )}
+              </div>
+
+              <button
+                style={{
+                  ...removeButton,
+                  opacity:
+                    saving
+                      ? 0.6
+                      : 1,
+                }}
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  void removeAssignment(
+                    assignment.id
+                  )
+                }
+              >
+                Remove
+              </button>
+            </div>
+          )
+        )}
       </div>
 
       <div style={formStyle}>
@@ -243,10 +489,13 @@ export default function FTMAssignmentPanel({
 
           <select
             style={inputStyle}
-            value={assignmentType}
-            onChange={(e) =>
+            value={
+              assignmentType
+            }
+            onChange={(event) =>
               setAssignmentType(
-                e.target.value
+                event.target
+                  .value
               )
             }
           >
@@ -260,43 +509,70 @@ export default function FTMAssignmentPanel({
           </select>
         </div>
 
-        <div style={fieldStyle}>
+        <div style={personFieldStyle}>
           <label style={labelStyle}>
-            Select FTM
+            Select FTM or FTP
+            Staff
           </label>
 
           <select
             style={inputStyle}
             value={selectedFTM}
-            onChange={(e) =>
+            onChange={(event) =>
               setSelectedFTM(
-                e.target.value
+                event.target
+                  .value
               )
             }
           >
             <option value="">
-              Choose FTM...
+              Choose an eligible
+              supervisor...
             </option>
 
-            {availableFTMs.map((ftm) => (
-              <option
-                key={ftm.id}
-                value={ftm.id}
-              >
-                {ftm.name} - {ftm.role}
-              </option>
-            ))}
+            {availableFTMs.map(
+              (ftm) => (
+                <option
+                  key={ftm.id}
+                  value={ftm.id}
+                >
+                  {ftm.name ??
+                    "Unnamed"}{" "}
+                  —{" "}
+                  {ftm.role ??
+                    "Unknown role"}
+                </option>
+              )
+            )}
           </select>
         </div>
 
         <button
-          style={addButton}
+          style={{
+            ...addButton,
+            opacity:
+              !selectedFTM ||
+              saving
+                ? 0.55
+                : 1,
+            cursor:
+              !selectedFTM ||
+              saving
+                ? "not-allowed"
+                : "pointer",
+          }}
           type="button"
+          disabled={
+            !selectedFTM ||
+            saving
+          }
           onClick={() =>
             void addAssignment()
           }
         >
-          + Assign FTM
+          {saving
+            ? "Saving..."
+            : "+ Assign FTM"}
         </button>
       </div>
     </div>
@@ -304,18 +580,26 @@ export default function FTMAssignmentPanel({
 }
 
 const cardStyle = {
-  background: "#111827",
-  border: "1px solid #243244",
-  borderRadius: "16px",
   padding: "24px",
   color: "white",
+  background: "#111827",
+  border:
+    "1px solid #243244",
+  borderRadius: "16px",
 };
 
 const headerStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent:
+    "space-between",
+  gap: "20px",
   marginBottom: "20px",
+  flexWrap: "wrap" as const,
 };
 
 const eyebrowStyle = {
+  margin: "0 0 6px",
   color: "#60a5fa",
   fontSize: "12px",
   fontWeight: 700,
@@ -327,7 +611,20 @@ const titleStyle = {
 };
 
 const subtitleStyle = {
+  margin: "6px 0 0",
   color: "#94a3b8",
+};
+
+const countBadgeStyle = {
+  padding: "7px 11px",
+  color: "#bfdbfe",
+  background:
+    "rgba(37, 99, 235, 0.18)",
+  border:
+    "1px solid #2563eb",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 800,
 };
 
 const assignmentGrid = {
@@ -337,16 +634,22 @@ const assignmentGrid = {
 
 const assignmentCard = {
   display: "flex",
-  justifyContent: "space-between",
   alignItems: "center",
-  background: "#172033",
+  justifyContent:
+    "space-between",
+  gap: "20px",
   padding: "16px",
+  background: "#172033",
+  border:
+    "1px solid #2d3b50",
   borderRadius: "12px",
 };
 
 const badgeStyle = {
-  background: "#2563eb",
+  display: "inline-block",
   padding: "4px 10px",
+  color: "#dbeafe",
+  background: "#2563eb",
   borderRadius: "20px",
   fontSize: "12px",
 };
@@ -356,63 +659,87 @@ const nameStyle = {
 };
 
 const detailStyle = {
-  color: "#94a3b8",
   margin: "2px 0",
+  color: "#94a3b8",
 };
 
 const emptyStyle = {
+  padding: "22px",
   color: "#94a3b8",
+  textAlign: "center" as const,
+  background: "#0f172a",
+  border:
+    "1px dashed #334155",
+  borderRadius: "10px",
 };
 
 const formStyle = {
-  marginTop: "24px",
   display: "flex",
-  gap: "12px",
   alignItems: "end",
+  gap: "12px",
+  marginTop: "24px",
   flexWrap: "wrap" as const,
 };
 
 const fieldStyle = {
   display: "flex",
-  flexDirection: "column" as const,
+  flexDirection:
+    "column" as const,
   gap: "6px",
+  minWidth: "180px",
+};
+
+const personFieldStyle = {
+  display: "flex",
+  flex: 1,
+  flexDirection:
+    "column" as const,
+  gap: "6px",
+  minWidth: "260px",
 };
 
 const labelStyle = {
-  fontSize: "13px",
   color: "#94a3b8",
+  fontSize: "13px",
 };
 
 const inputStyle = {
-  background: "#0f172a",
+  width: "100%",
+  boxSizing:
+    "border-box" as const,
+  padding: "11px",
   color: "white",
-  border: "1px solid #334155",
+  background: "#0f172a",
+  border:
+    "1px solid #334155",
   borderRadius: "8px",
-  padding: "10px",
 };
 
 const addButton = {
-  background: "#2563eb",
+  padding: "12px 18px",
   color: "white",
+  background: "#2563eb",
   border: "none",
   borderRadius: "8px",
-  padding: "12px 18px",
-  cursor: "pointer",
+  fontWeight: 800,
 };
 
 const removeButton = {
-  background: "#7f1d1d",
-  color: "white",
-  border: "none",
-  borderRadius: "8px",
   padding: "8px 12px",
+  color: "white",
+  background: "#7f1d1d",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
   cursor: "pointer",
 };
 
 const errorStyle = {
-  background: "#450a0a",
-  border: "1px solid #991b1b",
   padding: "12px",
-  borderRadius: "8px",
   marginBottom: "15px",
+  color: "#fecaca",
+  background: "#450a0a",
+  border:
+    "1px solid #991b1b",
+  borderRadius: "8px",
 };

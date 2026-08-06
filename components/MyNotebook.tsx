@@ -20,6 +20,10 @@ type NotebookItem = {
   section: string;
   item_label: string;
   completed: boolean;
+  completion_date?: string | null;
+  evidence_link?: string | null;
+  completed_by?: string | null;
+  completion_source?: string | null;
 };
 
 type DORRecord = {
@@ -40,13 +44,6 @@ type DORRecord = {
   bbcode: string;
   created_at: string;
   ftoName: string;
-};
-
-type SupervisingOfficer = {
-  id: string;
-  name: string;
-  rank: string;
-  role: string | null;
 };
 
 type UnguidedPatrol = {
@@ -101,6 +98,11 @@ export default function MyNotebook({
   ] = useState<any>(null);
 
   const [
+    assignedFTMName,
+    setAssignedFTMName,
+  ] = useState("Unassigned");
+
+  const [
     loading,
     setLoading,
   ] = useState(true);
@@ -143,18 +145,18 @@ export default function MyNotebook({
   ] = useState(false);
 
   const [
-    supervisingOfficers,
-    setSupervisingOfficers,
-  ] = useState<SupervisingOfficer[]>([]);
-
-  const [
     unguidedPatrols,
     setUnguidedPatrols,
   ] = useState<UnguidedPatrol[]>([]);
 
   const [
-    selectedSupervisorId,
-    setSelectedSupervisorId,
+    accompanyingOfficerName,
+    setAccompanyingOfficerName,
+  ] = useState("");
+
+  const [
+    accompanyingOfficerRank,
+    setAccompanyingOfficerRank,
   ] = useState("");
 
   const [
@@ -187,6 +189,34 @@ export default function MyNotebook({
     setCopiedUnguidedId,
   ] = useState<string | null>(null);
 
+  const [
+    courseEvidence,
+    setCourseEvidence,
+  ] = useState<
+    Record<
+      string,
+      {
+        date: string;
+        link: string;
+      }
+    >
+  >({});
+
+  const [
+    savingCourseItemId,
+    setSavingCourseItemId,
+  ] = useState<string | null>(null);
+
+  const [
+    courseError,
+    setCourseError,
+  ] = useState("");
+
+  const [
+    courseSuccess,
+    setCourseSuccess,
+  ] = useState("");
+
   useEffect(() => {
     loadNotebook();
   }, [traineeId]);
@@ -194,6 +224,7 @@ export default function MyNotebook({
   async function loadNotebook() {
     setLoading(true);
     setLoadError("");
+    setAssignedFTMName("Unassigned");
 
     let traineeData: any = null;
     let traineeError: any = null;
@@ -278,6 +309,118 @@ export default function MyNotebook({
       profileData
     );
 
+    const assignedFTMId =
+      typeof traineeData.assigned_ftm ===
+      "string"
+        ? traineeData.assigned_ftm.trim()
+        : "";
+
+    if (assignedFTMId) {
+      const {
+        data:
+          assignedFTMProfile,
+        error:
+          assignedFTMError,
+      } = await supabase
+        .from("profiles")
+        .select(`
+          id,
+          name,
+          rank,
+          badge_number,
+          role
+        `)
+        .eq(
+          "id",
+          assignedFTMId
+        )
+        .maybeSingle();
+
+      if (
+        assignedFTMError
+      ) {
+        console.error(
+          "ASSIGNED FTM LOAD ERROR",
+          {
+            assignedFTMId,
+            message:
+              assignedFTMError.message,
+            details:
+              assignedFTMError.details,
+            hint:
+              assignedFTMError.hint,
+            code:
+              assignedFTMError.code,
+          }
+        );
+
+        setAssignedFTMName(
+          "Unknown FTM"
+        );
+      } else if (
+        !assignedFTMProfile
+      ) {
+        console.warn(
+          "ASSIGNED FTM PROFILE NOT FOUND",
+          {
+            assignedFTMId,
+          }
+        );
+
+        setAssignedFTMName(
+          "Unknown FTM"
+        );
+      } else if (
+        assignedFTMProfile.id !==
+        assignedFTMId
+      ) {
+        console.error(
+          "ASSIGNED FTM PROFILE MISMATCH",
+          {
+            expected:
+              assignedFTMId,
+            received:
+              assignedFTMProfile.id,
+          }
+        );
+
+        setAssignedFTMName(
+          "Unknown FTM"
+        );
+      } else {
+        const ftmRank =
+          assignedFTMProfile.rank?.trim() ||
+          "";
+
+        const ftmName =
+          assignedFTMProfile.name?.trim() ||
+          "Unknown FTM";
+
+        const ftmBadge =
+          assignedFTMProfile.badge_number
+            ?.trim() ||
+          "";
+
+        const ftmDetails = [
+          ftmRank,
+          ftmName,
+          ftmBadge
+            ? `#${ftmBadge}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        setAssignedFTMName(
+          ftmDetails
+        );
+      }
+    } else {
+      setAssignedFTMName(
+        "Unassigned"
+      );
+    }
+
     const {
       data: itemData,
       error: itemError,
@@ -314,7 +457,6 @@ export default function MyNotebook({
       loadUnguidedPatrols(
         traineeData.id
       ),
-      loadSupervisingOfficers(),
     ]);
 
     setLoading(false);
@@ -417,75 +559,6 @@ export default function MyNotebook({
     }
   }
 
-  async function loadSupervisingOfficers() {
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("profiles")
-        .select(`
-          id,
-          name,
-          rank,
-          role
-        `)
-        .not(
-          "name",
-          "is",
-          null
-        )
-        .order(
-          "name",
-          {
-            ascending: true,
-          }
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      setSupervisingOfficers(
-        (data ?? [])
-          .filter(
-            (officer) =>
-              officer.id !==
-              user.id
-          )
-          .map(
-            (officer) => ({
-              id:
-                officer.id,
-
-              name:
-                officer.name ??
-                "Unknown Officer",
-
-              rank:
-                officer.rank ??
-                "Police Officer I",
-
-              role:
-                officer.role ??
-                null,
-            })
-          )
-      );
-    } catch (error) {
-      console.error(
-        "LOAD SUPERVISING OFFICERS ERROR",
-        error
-      );
-
-      setUnguidedError(
-        error instanceof Error
-          ? error.message
-          : "The supervising-officer list could not be loaded."
-      );
-    }
-  }
-
   async function loadUnguidedPatrols(
     traineeRecordId: string
   ) {
@@ -537,8 +610,8 @@ export default function MyNotebook({
   }
 
   function buildUnguidedStatement(
-    officer:
-      SupervisingOfficer,
+    officerName: string,
+    officerRank: string,
     date: string,
     time: string
   ) {
@@ -551,7 +624,7 @@ export default function MyNotebook({
       user.name ||
       "Unknown Officer";
 
-    return `I, [b]${traineeRank} ${traineeName}[/b] conducted an unguided patrol with [b]${officer.rank} ${officer.name}[/b] on ${formatDate(date)}, ${time}`;
+    return `I, [b]${traineeRank} ${traineeName}[/b] conducted an unguided patrol with [b]${officerRank} ${officerName}[/b] on ${formatDate(date)}, ${time}`;
   }
 
   async function saveUnguidedPatrol() {
@@ -559,16 +632,22 @@ export default function MyNotebook({
       return;
     }
 
-    const officer =
-      supervisingOfficers.find(
-        (item) =>
-          item.id ===
-          selectedSupervisorId
-      );
+    const officerName =
+      accompanyingOfficerName.trim();
 
-    if (!officer) {
+    const officerRank =
+      accompanyingOfficerRank.trim();
+
+    if (!officerName) {
       setUnguidedError(
-        "Select the officer who accompanied the unguided patrol."
+        "Enter the accompanying officer's name."
+      );
+      return;
+    }
+
+    if (!officerRank) {
+      setUnguidedError(
+        "Enter the accompanying officer's rank."
       );
       return;
     }
@@ -589,7 +668,8 @@ export default function MyNotebook({
 
     const statement =
       buildUnguidedStatement(
-        officer,
+        officerName,
+        officerRank,
         unguidedDate,
         unguidedTime
       );
@@ -625,13 +705,13 @@ export default function MyNotebook({
               trainee.id,
 
             supervising_officer_id:
-              officer.id,
+              null,
 
             supervising_officer_name:
-              officer.name,
+              officerName,
 
             supervising_officer_rank:
-              officer.rank,
+              officerRank,
 
             patrol_date:
               unguidedDate,
@@ -655,13 +735,13 @@ export default function MyNotebook({
                       trainee.id,
 
                     supervising_officer_id:
-                      officer.id,
+                      null,
 
                     supervising_officer_name:
-                      officer.name,
+                      officerName,
 
                     supervising_officer_rank:
-                      officer.rank,
+                      officerRank,
 
                     patrol_date:
                       unguidedDate,
@@ -695,7 +775,8 @@ export default function MyNotebook({
         ]
       );
 
-      setSelectedSupervisorId("");
+      setAccompanyingOfficerName("");
+      setAccompanyingOfficerRank("");
       setUnguidedDate("");
       setUnguidedTime("");
 
@@ -715,6 +796,198 @@ export default function MyNotebook({
       );
     } finally {
       setSavingUnguided(false);
+    }
+  }
+
+  async function completeMandatoryCourse(
+    item: NotebookItem
+  ) {
+    if (
+      !trainee ||
+      user?.id !==
+        trainee.profile_id
+    ) {
+      setCourseError(
+        "Only the probationary officer can submit their own temporary course evidence."
+      );
+      return;
+    }
+
+    const evidence =
+      courseEvidence[item.id] ?? {
+        date: "",
+        link: "",
+      };
+
+    const completionDate =
+      evidence.date.trim();
+
+    const evidenceLink =
+      evidence.link.trim();
+
+    if (!completionDate) {
+      setCourseError(
+        "Enter the date the course was completed."
+      );
+      return;
+    }
+
+    if (!evidenceLink) {
+      setCourseError(
+        "Enter the forum link for the completed course."
+      );
+      return;
+    }
+
+    if (
+      !/^https?:\/\//i.test(
+        evidenceLink
+      )
+    ) {
+      setCourseError(
+        "The forum evidence must be a complete http:// or https:// link."
+      );
+      return;
+    }
+
+    setSavingCourseItemId(
+      item.id
+    );
+    setCourseError("");
+    setCourseSuccess("");
+
+    try {
+      const {
+        data,
+      } = await auditAction({
+        user,
+
+        action:
+          "SELF_COMPLETE_MANDATORY_COURSE",
+
+        category:
+          "Notebook",
+
+        entityType:
+          "notebook_item",
+
+        entityId:
+          item.id,
+
+        targetName:
+          profile?.name ||
+          user.name ||
+          "Unknown Officer",
+
+        oldData: {
+          completed:
+            item.completed,
+          completion_date:
+            item.completion_date ??
+            null,
+          evidence_link:
+            item.evidence_link ??
+            null,
+          completion_source:
+            item.completion_source ??
+            null,
+        },
+
+        newData: {
+          completed: true,
+          completion_date:
+            completionDate,
+          evidence_link:
+            evidenceLink,
+          completed_by:
+            user.id,
+          completion_source:
+            "P1_SELF_SERVICE",
+        },
+
+        execute:
+          async () => {
+            const result =
+              await supabase
+                .from(
+                  "notebook_items"
+                )
+                .update({
+                  completed: true,
+                  completion_date:
+                    completionDate,
+                  evidence_link:
+                    evidenceLink,
+                  completed_by:
+                    user.id,
+                  completion_source:
+                    "P1_SELF_SERVICE",
+                })
+                .eq(
+                  "id",
+                  item.id
+                )
+                .eq(
+                  "trainee_id",
+                  trainee.id
+                )
+                .select("*")
+                .single();
+
+            if (
+              result.error
+            ) {
+              throw result.error;
+            }
+
+            return result;
+          },
+      });
+
+      setItems(
+        (current) =>
+          current.map(
+            (currentItem) =>
+              currentItem.id ===
+              item.id
+                ? {
+                    ...currentItem,
+                    ...data,
+                  }
+                : currentItem
+          )
+      );
+
+      setCourseEvidence(
+        (current) => {
+          const next = {
+            ...current,
+          };
+
+          delete next[item.id];
+
+          return next;
+        }
+      );
+
+      setCourseSuccess(
+        `${item.item_label} has been marked complete.`
+      );
+    } catch (error) {
+      console.error(
+        "MANDATORY COURSE COMPLETION ERROR",
+        error
+      );
+
+      setCourseError(
+        error instanceof Error
+          ? error.message
+          : "The mandatory course could not be marked complete."
+      );
+    } finally {
+      setSavingCourseItemId(
+        null
+      );
     }
   }
 
@@ -867,9 +1140,7 @@ export default function MyNotebook({
   }
 
   const canAddUnguidedPatrol =
-    !traineeId &&
-    user?.id ===
-      trainee?.profile_id;
+  user?.id === trainee?.profile_id;
 
   return (
     <div>
@@ -945,8 +1216,7 @@ export default function MyNotebook({
           <Detail
             label="Field Training Manager"
             value={
-              trainee?.assigned_ftm ||
-              "Unassigned"
+              assignedFTMName
             }
           />
 
@@ -961,41 +1231,245 @@ export default function MyNotebook({
       </div>
 
       <div style={card}>
-        <h2 style={heading}>
-          Mandatory Requirements
-        </h2>
+        <div style={sectionHeader}>
+          <div>
+            <h2
+              style={{
+                ...heading,
+                marginBottom:
+                  "6px",
+              }}
+            >
+              Mandatory Requirements
+            </h2>
 
-        <div
-          style={contentGap}
-        >
+            <p style={muted}>
+              Temporary self-service completion is available for BFA and EVOC until the dedicated course systems are connected.
+            </p>
+          </div>
+
+          <span style={countBadge}>
+            {
+              mandatoryItems.filter(
+                (item) =>
+                  item.completed
+              ).length
+            }
+            /{mandatoryItems.length} COMPLETE
+          </span>
+        </div>
+
+        {courseError && (
+          <div
+            style={{
+              ...errorBox,
+              marginBottom:
+                "14px",
+            }}
+          >
+            {courseError}
+          </div>
+        )}
+
+        {courseSuccess && (
+          <div
+            style={{
+              ...successBox,
+              marginBottom:
+                "14px",
+            }}
+          >
+            {courseSuccess}
+          </div>
+        )}
+
+        <div style={mandatoryCourseListStyle}>
           {mandatoryItems.length ===
           0 ? (
             <p style={muted}>
-              No mandatory
-              requirements found.
+              No mandatory requirements found.
             </p>
           ) : (
             mandatoryItems.map(
-              (item) => (
-                <div
-                  key={item.id}
-                  style={
-                    mandatoryBox
-                  }
-                >
-                  <span>
-                    {item.completed
-                      ? "✅"
-                      : "⬜"}
-                  </span>
+              (item) => {
+                const evidence =
+                  courseEvidence[item.id] ?? {
+                    date: "",
+                    link: "",
+                  };
 
-                  <b>
-                    {
-                      item.item_label
-                    }
-                  </b>
-                </div>
-              )
+                const canSelfComplete =
+                  user?.id ===
+                    trainee?.profile_id &&
+                  !item.completed;
+
+                return (
+                  <div
+                    key={item.id}
+                    style={mandatoryCourseCardStyle}
+                  >
+                    <div style={mandatoryCourseHeaderStyle}>
+                      <span
+                        style={
+                          item.completed
+                            ? mandatoryCompleteIconStyle
+                            : mandatoryPendingIconStyle
+                        }
+                      >
+                        {item.completed
+                          ? "✓"
+                          : "○"}
+                      </span>
+
+                      <div>
+                        <strong>
+                          {item.item_label}
+                        </strong>
+
+                        <p style={mandatoryStatusTextStyle}>
+                          {item.completed
+                            ? "Completed"
+                            : "Outstanding"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {item.completed ? (
+                      <div style={courseEvidenceSummaryStyle}>
+                        {item.completion_date && (
+                          <span>
+                            Completed:{" "}
+                            {formatDate(
+                              item.completion_date
+                            )}
+                          </span>
+                        )}
+
+                        {item.evidence_link && (
+                          <a
+                            href={
+                              item.evidence_link
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            style={courseEvidenceLinkStyle}
+                          >
+                            Open forum evidence ↗
+                          </a>
+                        )}
+
+                        {item.completion_source && (
+                          <span>
+                            Source:{" "}
+                            {
+                              item.completion_source
+                            }
+                          </span>
+                        )}
+                      </div>
+                    ) : canSelfComplete ? (
+                      <div style={courseFormStyle}>
+                        <div>
+                          <label style={formLabel}>
+                            Completion Date
+                          </label>
+
+                          <input
+                            type="date"
+                            value={
+                              evidence.date
+                            }
+                            onChange={(event) =>
+                              setCourseEvidence(
+                                (current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...evidence,
+                                    date:
+                                      event.target.value,
+                                  },
+                                })
+                              )
+                            }
+                            disabled={
+                              savingCourseItemId ===
+                              item.id
+                            }
+                            style={formInput}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={formLabel}>
+                            Forum Evidence Link
+                          </label>
+
+                          <input
+                            type="url"
+                            value={
+                              evidence.link
+                            }
+                            onChange={(event) =>
+                              setCourseEvidence(
+                                (current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...evidence,
+                                    link:
+                                      event.target.value,
+                                  },
+                                })
+                              )
+                            }
+                            placeholder="https://..."
+                            disabled={
+                              savingCourseItemId ===
+                              item.id
+                            }
+                            style={formInput}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void completeMandatoryCourse(
+                              item
+                            )
+                          }
+                          disabled={
+                            savingCourseItemId ===
+                            item.id
+                          }
+                          style={{
+                            ...courseCompleteButtonStyle,
+                            opacity:
+                              savingCourseItemId ===
+                              item.id
+                                ? 0.65
+                                : 1,
+                          }}
+                        >
+                          {savingCourseItemId ===
+                          item.id
+                            ? "Saving..."
+                            : `Mark ${
+                                item.item_label.includes(
+                                  "BFA"
+                                )
+                                  ? "BFA"
+                                  : "EVOC"
+                              } Complete`}
+                        </button>
+                      </div>
+                    ) : (
+                      <p style={muted}>
+                        Awaiting course completion evidence from the probationary officer.
+                      </p>
+                    )}
+                  </div>
+                );
+              }
             )
           )}
         </div>
@@ -1240,39 +1714,48 @@ export default function MyNotebook({
             <div style={unguidedGrid}>
               <div>
                 <label style={formLabel}>
-                  Accompanying Officer
+                  Accompanying Officer Name
                 </label>
 
-                <select
+                <input
+                  type="text"
                   value={
-                    selectedSupervisorId
+                    accompanyingOfficerName
                   }
                   onChange={(event) =>
-                    setSelectedSupervisorId(
+                    setAccompanyingOfficerName(
                       event.target.value
                     )
                   }
+                  placeholder="e.g. Hayden Blackwood"
                   disabled={
                     savingUnguided
                   }
                   style={formInput}
-                >
-                  <option value="">
-                    Select Officer
-                  </option>
+                />
+              </div>
 
-                  {supervisingOfficers.map(
-                    (officer) => (
-                      <option
-                        key={officer.id}
-                        value={officer.id}
-                      >
-                        {officer.rank}{" "}
-                        {officer.name}
-                      </option>
+              <div>
+                <label style={formLabel}>
+                  Accompanying Officer Rank
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    accompanyingOfficerRank
+                  }
+                  onChange={(event) =>
+                    setAccompanyingOfficerRank(
+                      event.target.value
                     )
-                  )}
-                </select>
+                  }
+                  placeholder="e.g. Police Officer III"
+                  disabled={
+                    savingUnguided
+                  }
+                  style={formInput}
+                />
               </div>
 
               <div>
@@ -1320,7 +1803,8 @@ export default function MyNotebook({
               </div>
             </div>
 
-            {selectedSupervisorId &&
+            {accompanyingOfficerName.trim() &&
+              accompanyingOfficerRank.trim() &&
               unguidedDate &&
               unguidedTime && (
                 <div style={previewBox}>
@@ -1330,11 +1814,8 @@ export default function MyNotebook({
 
                   <p style={previewText}>
                     {buildUnguidedStatement(
-                      supervisingOfficers.find(
-                        (officer) =>
-                          officer.id ===
-                          selectedSupervisorId
-                      )!,
+                      accompanyingOfficerName.trim(),
+                      accompanyingOfficerRank.trim(),
                       unguidedDate,
                       unguidedTime
                     )}
@@ -1789,6 +2270,89 @@ const muted = {
   color: "#94a3b8",
   fontSize: "14px",
   margin: 0,
+};
+
+const mandatoryCourseListStyle = {
+  display: "grid",
+  gap: "14px",
+};
+
+const mandatoryCourseCardStyle = {
+  display: "grid",
+  gap: "14px",
+  padding: "18px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: "10px",
+};
+
+const mandatoryCourseHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+};
+
+const mandatoryCompleteIconStyle = {
+  width: "28px",
+  height: "28px",
+  display: "grid",
+  placeItems: "center",
+  color: "#bbf7d0",
+  background:
+    "rgba(20, 83, 45, 0.35)",
+  border: "1px solid #166534",
+  borderRadius: "999px",
+  fontWeight: 900,
+};
+
+const mandatoryPendingIconStyle = {
+  width: "28px",
+  height: "28px",
+  display: "grid",
+  placeItems: "center",
+  color: "#94a3b8",
+  background: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: "999px",
+  fontWeight: 900,
+};
+
+const mandatoryStatusTextStyle = {
+  margin: "4px 0 0",
+  color: "#94a3b8",
+  fontSize: "12px",
+};
+
+const courseFormStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(210px, 1fr))",
+  alignItems: "end",
+  gap: "14px",
+};
+
+const courseCompleteButtonStyle = {
+  padding: "12px 16px",
+  color: "white",
+  background: "#2563eb",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const courseEvidenceSummaryStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  color: "#cbd5e1",
+  fontSize: "12px",
+  flexWrap: "wrap" as const,
+};
+
+const courseEvidenceLinkStyle = {
+  color: "#60a5fa",
+  textDecoration: "none",
 };
 
 const progressText = {

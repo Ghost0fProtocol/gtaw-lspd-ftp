@@ -109,6 +109,9 @@ const FTM_ROLES = [
   "Field Training Supervisor",
   "FTM",
   "FTS",
+  "FTP Staff",
+  "STAFF",
+  "LSPD STAFF",
 ];
 
 const MAX_ACTIVE_P1S_PER_FTM = 4;
