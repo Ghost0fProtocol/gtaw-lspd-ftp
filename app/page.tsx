@@ -180,6 +180,56 @@ export default function Home() {
     };
   }, [user]);
 
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (
+      activePage === "Dashboard" ||
+      activePage === "P1 Records" ||
+      activePage === "Records"
+    ) {
+      void refreshTrainees();
+    }
+  }, [
+    activePage,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const channel =
+      supabase
+        .channel(
+          "trainee-record-watch"
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "trainees",
+          },
+          () => {
+            void refreshTrainees();
+          }
+        )
+        .subscribe();
+
+    return () => {
+      void supabase.removeChannel(
+        channel
+      );
+    };
+  }, [
+    user?.id,
+  ]);
+
   async function refreshTrainees() {
     try {
       const data =

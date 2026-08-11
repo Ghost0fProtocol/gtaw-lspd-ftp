@@ -590,7 +590,14 @@ export default function Dashboard({
       ).length;
 
     for (
-      const trainee of trainees
+      const trainee of trainees.filter(
+        (trainee) =>
+          trainee.archived !== true &&
+          (
+            trainee.status ??
+            "Active"
+          ) !== "P2"
+      )
     ) {
       const stage =
         getTraineeStage(
@@ -1588,31 +1595,35 @@ function calculateProgrammeStats(
   trainees: any[],
   stats: DashboardStats
 ) {
-  stats.activeTrainees =
+  const activeTrainees =
     trainees.filter(
       (trainee) =>
+        trainee.archived !== true &&
         (
           trainee.status ??
           "Active"
         ) !== "P2"
-    ).length;
+    );
+
+  stats.activeTrainees =
+    activeTrainees.length;
 
   stats.reviewTrainees =
-    trainees.filter(
+    activeTrainees.filter(
       (trainee) =>
         trainee.status ===
         "Review"
     ).length;
 
   stats.unassignedTrainees =
-    trainees.filter(
+    activeTrainees.filter(
       (trainee) =>
         !trainee.assigned_ftm &&
         !trainee.ftm
     ).length;
 
   for (
-    const trainee of trainees
+    const trainee of activeTrainees
   ) {
     const stage =
       getTraineeStage(
@@ -1646,13 +1657,21 @@ function calculateProgrammeStats(
         stats.readyForPromotion +=
           1;
         break;
-
-      case "P2":
-        stats.p2Trainees +=
-          1;
-        break;
     }
   }
+
+  stats.p2Trainees =
+    trainees.filter(
+      (trainee) =>
+        trainee.archived !== true &&
+        (
+          trainee.status ===
+            "P2" ||
+          getTraineeStage(
+            trainee
+          ) === "P2"
+        )
+    ).length;
 }
 
 function getDashboardMode(
@@ -2845,6 +2864,11 @@ function getOperationalPriority({
   const activeTrainees =
     trainees.filter(
       (trainee) =>
+        trainee.archived !== true &&
+        (
+          trainee.status ??
+          "Active"
+        ) !== "P2" &&
         getTraineeStage(
           trainee
         ) !== "P2"
