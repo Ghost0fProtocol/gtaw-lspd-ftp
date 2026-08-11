@@ -65,6 +65,16 @@ type TraineeUpdates = {
   assigned_ftm?:
     | string
     | null;
+
+  archived?: boolean;
+
+  archived_at?:
+    | string
+    | null;
+
+  archived_by?:
+    | string
+    | null;
 };
 
 // ================================
@@ -84,6 +94,10 @@ export async function getTrainees() {
       start_date,
       notebook,
       assigned_ftm,
+
+      archived,
+      archived_at,
+      archived_by,
 
       training_stage,
 
@@ -136,7 +150,7 @@ export async function getTrainees() {
   }
 
   console.log(
-    "TRAINEES WITH PROFILE AND PROGRESSION DATA:",
+    "TRAINEES WITH PROFILE, PROGRESSION AND ARCHIVE DATA:",
     data
   );
 
@@ -162,6 +176,10 @@ export async function getTrainee(
       start_date,
       notebook,
       assigned_ftm,
+
+      archived,
+      archived_at,
+      archived_by,
 
       training_stage,
 

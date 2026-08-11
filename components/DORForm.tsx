@@ -52,7 +52,11 @@ type LearningGoalOutcome =
 type LearningGoalsDecision =
   | ""
   | "yes"
-  | "no";
+  | "no"
+  | "complete";
+
+const CHECKLIST_COMPLETE_NARRATIVE =
+  "Checklist complete. The probationary officer has completed all required structured learning goals.";
 
 type LearningGoalAssessment = {
   itemId: string;
@@ -224,6 +228,10 @@ function buildLearningGoalsNarrative(
   decision: LearningGoalsDecision,
   noReason: string
 ) {
+  if (decision === "complete") {
+    return CHECKLIST_COMPLETE_NARRATIVE;
+  }
+
   if (decision === "no") {
     const reason =
       noReason.trim();
@@ -950,10 +958,6 @@ export default function DORForm({
           "trainee_id",
           traineeRecordId
         )
-        .eq(
-          "completed",
-          false
-        )
         .not(
           "item_label",
           "ilike",
@@ -981,12 +985,70 @@ export default function DORForm({
         throw error;
       }
 
-      const items =
+      const allEligibleItems =
         data ?? [];
+
+      const items =
+        allEligibleItems.filter(
+          (item) =>
+            !item.completed
+        );
+
+      const checklistComplete =
+        allEligibleItems.length > 0 &&
+        items.length === 0;
 
       setIncompleteNotebookItems(
         items
       );
+
+      if (checklistComplete) {
+        setLearningGoalsDecision(
+          "complete"
+        );
+
+        setLearningGoalAssessments(
+          {}
+        );
+
+        setSelectedNotebookItemIds(
+          []
+        );
+
+        setNoLearningGoalsReason(
+          ""
+        );
+
+        setShowNoGoalsModal(
+          false
+        );
+
+        setFormData(
+          (current) => ({
+            ...current,
+            learningGoals:
+              CHECKLIST_COMPLETE_NARRATIVE,
+          })
+        );
+      } else {
+        setLearningGoalsDecision(
+          (current) =>
+            current === "complete"
+              ? ""
+              : current
+        );
+
+        setFormData(
+          (current) => ({
+            ...current,
+            learningGoals:
+              current.learningGoals ===
+              CHECKLIST_COMPLETE_NARRATIVE
+                ? ""
+                : current.learningGoals,
+          })
+        );
+      }
 
       setLearningGoalAssessments(
         (current) =>
@@ -1404,7 +1466,9 @@ export default function DORForm({
         rawAssessments.__decision ===
           "yes" ||
         rawAssessments.__decision ===
-          "no"
+          "no" ||
+        rawAssessments.__decision ===
+          "complete"
           ? rawAssessments.__decision
           : "";
 
@@ -3658,11 +3722,18 @@ export default function DORForm({
               </p>
             </div>
 
-            <span style={ratingCountStyle}>
-              {
-                selectedNotebookItemIds.length
-              }{" "}
-              completed
+            <span
+              style={
+                learningGoalsDecision ===
+                "complete"
+                  ? completeChecklistBadgeStyle
+                  : ratingCountStyle
+              }
+            >
+              {learningGoalsDecision ===
+              "complete"
+                ? "✓ Checklist complete"
+                : `${selectedNotebookItemIds.length} completed`}
             </span>
           </div>
 
@@ -3679,6 +3750,60 @@ export default function DORForm({
               Unable to load the trainee&apos;s learning goals:{" "}
               {notebookLoadError}
             </div>
+          ) : learningGoalsDecision ===
+            "complete" ? (
+            <>
+              <div style={completeChecklistStyle}>
+                <strong>
+                  ✓ Checklist Complete
+                </strong>
+
+                <p
+                  style={{
+                    margin:
+                      "7px 0 0",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  All structured learning goals have already been completed. No additional learning goals are required for this patrol.
+                </p>
+              </div>
+
+              <div style={narrativePreviewStyle}>
+                <h4
+                  style={{
+                    margin:
+                      "0 0 6px",
+                  }}
+                >
+                  Auto-Populated Learning Goals
+                </h4>
+
+                <p
+                  style={{
+                    ...subTextStyle,
+                    margin:
+                      "0 0 12px",
+                  }}
+                >
+                  This text will be inserted into the DOR and BBCode automatically.
+                </p>
+
+                <textarea
+                  value={
+                    CHECKLIST_COMPLETE_NARRATIVE
+                  }
+                  readOnly
+                  style={{
+                    ...textareaStyle,
+                    minHeight:
+                      "120px",
+                    backgroundColor:
+                      "#172033",
+                  }}
+                />
+              </div>
+            </>
           ) : (
             <>
               <div style={learningGoalQuestionStyle}>
@@ -4956,6 +5081,16 @@ const ratingCountStyle = {
   fontSize: "13px",
   whiteSpace:
     "nowrap" as const,
+};
+
+const completeChecklistBadgeStyle = {
+  ...ratingCountStyle,
+  color: "#bbf7d0",
+  backgroundColor:
+    "rgba(20, 83, 45, 0.35)",
+  border:
+    "1px solid #166534",
+  fontWeight: 800,
 };
 
 const buttonRowStyle = {

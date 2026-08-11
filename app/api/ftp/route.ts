@@ -1003,10 +1003,18 @@ async function promoteToP2(
     {
       status: "P2",
       training_stage: "P2",
+
+      archived: true,
+      archived_at: now,
+      archived_by:
+        actingUserId,
+
       assigned_ftm: null,
+
       promoted_to_p2_at: now,
       promoted_to_p2_by:
         actingUserId,
+
       progression_updated_at:
         now,
       progression_updated_by:
@@ -1052,8 +1060,8 @@ async function getFPPEligibility(
     );
 
   const checklistComplete =
-    isChecklistComplete(
-      trainee.notebook
+    await isStructuredChecklistComplete(
+      traineeId
     );
 
   const latestDORs =
@@ -1296,30 +1304,46 @@ async function updateTrainee(
   }
 }
 
-function isChecklistComplete(
-  notebook: unknown
+async function isStructuredChecklistComplete(
+  traineeId: string
 ) {
-  if (
-    !Array.isArray(notebook)
-  ) {
-    return false;
+  const {
+    data,
+    error,
+  } = await getSupabaseAdmin()
+    .from("notebook_items")
+    .select(`
+      id,
+      completed,
+      item_label
+    `)
+    .eq(
+      "trainee_id",
+      traineeId
+    )
+    .not(
+      "item_label",
+      "ilike",
+      "%(BFA)%"
+    )
+    .not(
+      "item_label",
+      "ilike",
+      "%(EVOC)%"
+    );
+
+  if (error) {
+    throw error;
   }
 
   const items =
-    notebook.flatMap(
-      (section: any) =>
-        Array.isArray(
-          section?.items
-        )
-          ? section.items
-          : []
-    );
+    data ?? [];
 
   return (
     items.length > 0 &&
     items.every(
-      (item: any) =>
-        item?.completed === true
+      (item) =>
+        item.completed === true
     )
   );
 }
