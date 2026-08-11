@@ -367,7 +367,8 @@ export function getSidebarMenuItems(
   ) {
     menuItems.push(
       "Daily Observation Reports",
-      "Orientation Patrols"
+      "Orientation Patrols",
+      "Comment Cards"
     );
   }
 

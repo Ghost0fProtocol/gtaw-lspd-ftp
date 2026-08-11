@@ -60,6 +60,7 @@ const menuSections: MenuSection[] = [
     items: [
       "Daily Observation Reports",
       "Orientation Patrols",
+      "Comment Cards",
       "P1 Records",
       "My Notebook",
       "My FTO File",
@@ -91,6 +92,7 @@ const menuIcons:
     Dashboard: "⌂",
     "Daily Observation Reports": "▣",
     "Orientation Patrols": "◫",
+    "Comment Cards": "◇",
     "P1 Records": "◎",
     "My Notebook": "▤",
     "My FTO File": "▱",

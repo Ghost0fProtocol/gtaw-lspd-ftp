@@ -33,6 +33,7 @@ import FieldTrainingManagementDashboard from "../components/FieldTrainingManagem
 import BatchManagement from "../components/BatchManagement";
 import AuditLog from "../components/AuditLog";
 import ReviewCentre from "../components/ReviewCentre";
+import CommentCardsPage from "./comment-cards/page";
 
 type InitialRole =
   | "Probationary Officer"
@@ -732,6 +733,11 @@ export default function Home() {
       case "Orientation Patrols":
         return (
           <OrientationForm />
+        );
+
+      case "Comment Cards":
+        return (
+          <CommentCardsPage />
         );
 
       case "Records":
